@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/"
+title = "B.L.U.E.-J. AI Coding Simulator"
+version = "1.0.0"
+id = "artifacts/blue-j"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 23415
+
+[services.development]
+run = "pnpm --filter @workspace/blue-j run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/blue-j", "run", "build" ]
+publicDir = "artifacts/blue-j/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "23415"
+BASE_PATH = "/"

@@ -1,0 +1,18 @@
+packages:
+  "zustand": "Global state management for HUD and hardware telemetry"
+  "uuid": "Generating unique session IDs for the user"
+  "@types/uuid": "Types for UUID"
+  "react-syntax-highlighter": "Syntax highlighting for the IDE panel"
+  "@types/react-syntax-highlighter": "Types for react-syntax-highlighter"
+  "react-markdown": "Rendering J.'s markdown responses in the chat"
+  "framer-motion": "Animations for holographic UI elements and transitions"
+  "lucide-react": "Icons for the HUD"
+
+images:
+  - path: "artifacts/blue-j/public/images/hologrid.png"
+    description: "Subtle dark blue and cyan glowing futuristic holographic scanline grid pattern, transparent background"
+    aspect_ratio: "16:9"
+
+notes:
+  - "The API provides SSE streaming for chat and voice messages."
+  - "TTS audio is returned as base64 strings that need to be played via AudioContext."

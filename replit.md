@@ -2,7 +2,7 @@
 
 ## Overview
 
-pnpm workspace monorepo using TypeScript. Each package manages its own dependencies.
+B.L.U.E.-J. — An immersive AI-powered Python coding simulator. J. (B.L.U.E.-J.) is an AI mentor with the dry wit and English accent of Paul Bettany's J.A.R.V.I.S., teaching users to code by guiding them through the process of building their own personal AI clone. Fully responsive — works on desktop, tablet, phone, all OS platforms.
 
 ## Stack
 
@@ -10,87 +10,87 @@ pnpm workspace monorepo using TypeScript. Each package manages its own dependenc
 - **Node.js version**: 24
 - **Package manager**: pnpm
 - **TypeScript version**: 5.9
-- **API framework**: Express 5
+- **Frontend**: React + Vite (artifacts/blue-j)
+- **API framework**: Express 5 (artifacts/api-server)
 - **Database**: PostgreSQL + Drizzle ORM
-- **Validation**: Zod (`zod/v4`), `drizzle-zod`
+- **AI**: OpenAI GPT-5.2 via Replit AI Integrations (no user API key needed)
+- **TTS/STT**: OpenAI audio models (never Web Speech API)
+- **Validation**: Zod (zod/v4), drizzle-zod
 - **API codegen**: Orval (from OpenAPI spec)
-- **Build**: esbuild (CJS bundle)
+- **State**: Zustand
+- **Animations**: Framer Motion
 
 ## Structure
 
 ```text
 artifacts-monorepo/
-├── artifacts/              # Deployable applications
-│   └── api-server/         # Express API server
-├── lib/                    # Shared libraries
-│   ├── api-spec/           # OpenAPI spec + Orval codegen config
-│   ├── api-client-react/   # Generated React Query hooks
-│   ├── api-zod/            # Generated Zod schemas from OpenAPI
-│   └── db/                 # Drizzle ORM schema + DB connection
-├── scripts/                # Utility scripts (single workspace package)
-│   └── src/                # Individual .ts scripts, run via `pnpm --filter @workspace/scripts run <script>`
-├── pnpm-workspace.yaml     # pnpm workspace (artifacts/*, lib/*, lib/integrations/*, scripts)
-├── tsconfig.base.json      # Shared TS options (composite, bundler resolution, es2022)
-├── tsconfig.json           # Root TS project references
-└── package.json            # Root package with hoisted devDeps
+├── artifacts/
+│   ├── blue-j/              # React+Vite frontend (B.L.U.E.-J. simulator)
+│   └── api-server/          # Express API server
+├── lib/
+│   ├── api-spec/            # OpenAPI spec + Orval codegen config
+│   ├── api-client-react/    # Generated React Query hooks
+│   ├── api-zod/             # Generated Zod schemas from OpenAPI
+│   ├── db/                  # Drizzle ORM schema + DB connection
+│   ├── integrations-openai-ai-server/  # OpenAI server-side integration
+│   └── integrations-openai-ai-react/   # OpenAI React hooks
+├── scripts/
+├── pnpm-workspace.yaml
+├── tsconfig.base.json
+├── tsconfig.json
+└── package.json
 ```
+
+## DB Schema
+
+- `conversations` — OpenAI conversation sessions
+- `messages` — Individual messages per conversation
+- `user_progress` — Per-session curriculum progress, selected language/OS, phase/task tracking
+
+## API Routes
+
+All routes prefixed with `/api`:
+
+### B.L.U.E.-J. Routes (`/api/bluej/`)
+- `POST /bluej/chat` — Stream chat with J. (SSE). Includes J.'s personality engine, Five Masters validation, Asimov's Laws safety, OS-aware terminal context.
+- `POST /bluej/tts` — Text-to-speech for J.'s voice (OpenAI audio, echo voice)
+- `GET /bluej/progress?sessionId=` — Get user curriculum progress
+- `POST /bluej/progress/task` — Mark a curriculum task complete
+
+### OpenAI Routes (`/api/openai/`)
+- Standard conversation CRUD + streaming message/voice endpoints
+
+## Curriculum (6 Phases)
+
+1. **INITIALIZATION** — Variables, data types, first contact
+2. **DATA STRUCTURES** — Lists, dictionaries
+3. **CONTROL FLOW** — If/else, loops
+4. **FUNCTIONS & OOP** — Functions, classes (AICore blueprint)
+5. **AI LIBRARIES** — NumPy, HuggingFace Transformers
+6. **YOUR AI CLONE** — Full local AI assistant (J.'s clone)
+
+## Key Features
+
+- Holographic HUD UI with scanline overlays, cyan/blue cyberpunk aesthetic
+- Language toggle: Python | C++ | JavaScript
+- OS toggle: Windows | macOS | Linux | Android | iOS (auto-detected, user-overridable)
+- Hardware monitoring: CPU cores + RAM via browser APIs (user consent required, revocable)
+- Voice I/O: J. speaks via TTS; user can speak via STT
+- Session persistence via localStorage + database
+- ANTI-ULTRON safety protocol + Asimov's Laws hardwired
+- Fully responsive: mobile-first, works on all screen sizes
 
 ## TypeScript & Composite Projects
 
-Every package extends `tsconfig.base.json` which sets `composite: true`. The root `tsconfig.json` lists all packages as project references. This means:
+Every package extends `tsconfig.base.json` which sets `composite: true`.
 
-- **Always typecheck from the root** — run `pnpm run typecheck` (which runs `tsc --build --emitDeclarationOnly`). This builds the full dependency graph so that cross-package imports resolve correctly. Running `tsc` inside a single package will fail if its dependencies haven't been built yet.
-- **`emitDeclarationOnly`** — we only emit `.d.ts` files during typecheck; actual JS bundling is handled by esbuild/tsx/vite...etc, not `tsc`.
-- **Project references** — when package A depends on package B, A's `tsconfig.json` must list B in its `references` array. `tsc --build` uses this to determine build order and skip up-to-date packages.
-
-## Root Scripts
-
-- `pnpm run build` — runs `typecheck` first, then recursively runs `build` in all packages that define it
-- `pnpm run typecheck` — runs `tsc --build --emitDeclarationOnly` using project references
+Run codegen: `pnpm --filter @workspace/api-spec run codegen`
+Push DB: `pnpm --filter @workspace/db run push`
 
 ## Packages
 
+### `artifacts/blue-j` (`@workspace/blue-j`)
+React + Vite frontend. Main simulator UI. Entry: `src/main.tsx`. Pages: `src/pages/simulator.tsx`. Key components: HudHeader, ChatPanel, IdePanel, HardwareStrip, HardwareBanner.
+
 ### `artifacts/api-server` (`@workspace/api-server`)
-
-Express 5 API server. Routes live in `src/routes/` and use `@workspace/api-zod` for request and response validation and `@workspace/db` for persistence.
-
-- Entry: `src/index.ts` — reads `PORT`, starts Express
-- App setup: `src/app.ts` — mounts CORS, JSON/urlencoded parsing, routes at `/api`
-- Routes: `src/routes/index.ts` mounts sub-routers; `src/routes/health.ts` exposes `GET /health` (full path: `/api/health`)
-- Depends on: `@workspace/db`, `@workspace/api-zod`
-- `pnpm --filter @workspace/api-server run dev` — run the dev server
-- `pnpm --filter @workspace/api-server run build` — production esbuild bundle (`dist/index.cjs`)
-- Build bundles an allowlist of deps (express, cors, pg, drizzle-orm, zod, etc.) and externalizes the rest
-
-### `lib/db` (`@workspace/db`)
-
-Database layer using Drizzle ORM with PostgreSQL. Exports a Drizzle client instance and schema models.
-
-- `src/index.ts` — creates a `Pool` + Drizzle instance, exports schema
-- `src/schema/index.ts` — barrel re-export of all models
-- `src/schema/<modelname>.ts` — table definitions with `drizzle-zod` insert schemas (no models definitions exist right now)
-- `drizzle.config.ts` — Drizzle Kit config (requires `DATABASE_URL`, automatically provided by Replit)
-- Exports: `.` (pool, db, schema), `./schema` (schema only)
-
-Production migrations are handled by Replit when publishing. In development, we just use `pnpm --filter @workspace/db run push`, and we fallback to `pnpm --filter @workspace/db run push-force`.
-
-### `lib/api-spec` (`@workspace/api-spec`)
-
-Owns the OpenAPI 3.1 spec (`openapi.yaml`) and the Orval config (`orval.config.ts`). Running codegen produces output into two sibling packages:
-
-1. `lib/api-client-react/src/generated/` — React Query hooks + fetch client
-2. `lib/api-zod/src/generated/` — Zod schemas
-
-Run codegen: `pnpm --filter @workspace/api-spec run codegen`
-
-### `lib/api-zod` (`@workspace/api-zod`)
-
-Generated Zod schemas from the OpenAPI spec (e.g. `HealthCheckResponse`). Used by `api-server` for response validation.
-
-### `lib/api-client-react` (`@workspace/api-client-react`)
-
-Generated React Query hooks and fetch client from the OpenAPI spec (e.g. `useHealthCheck`, `healthCheck`).
-
-### `scripts` (`@workspace/scripts`)
-
-Utility scripts package. Each script is a `.ts` file in `src/` with a corresponding npm script in `package.json`. Run scripts via `pnpm --filter @workspace/scripts run <script>`. Scripts can import any workspace package (e.g., `@workspace/db`) by adding it as a dependency in `scripts/package.json`.
+Express 5 API server. J.'s brain lives in `src/routes/bluej/`. Key files: `j-personality.ts` (system prompt builder, safety checks), `curriculum.ts` (all 6 phases and code snippets), `chat.ts` (streaming chat endpoint), `tts.ts` (voice endpoint), `progress.ts` (progress tracking).

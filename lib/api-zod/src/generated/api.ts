@@ -14,3 +14,163 @@ import * as zod from "zod";
 export const HealthCheckResponse = zod.object({
   status: zod.string(),
 });
+
+/**
+ * @summary List all conversations
+ */
+export const ListOpenaiConversationsResponseItem = zod.object({
+  id: zod.number(),
+  title: zod.string(),
+  createdAt: zod.coerce.date(),
+});
+export const ListOpenaiConversationsResponse = zod.array(
+  ListOpenaiConversationsResponseItem,
+);
+
+/**
+ * @summary Create a new conversation
+ */
+export const CreateOpenaiConversationBody = zod.object({
+  title: zod.string(),
+});
+
+/**
+ * @summary Get conversation with messages
+ */
+export const GetOpenaiConversationParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const GetOpenaiConversationResponse = zod.object({
+  id: zod.number(),
+  title: zod.string(),
+  createdAt: zod.coerce.date(),
+  messages: zod.array(
+    zod.object({
+      id: zod.number(),
+      conversationId: zod.number(),
+      role: zod.string(),
+      content: zod.string(),
+      createdAt: zod.coerce.date(),
+    }),
+  ),
+});
+
+/**
+ * @summary Delete a conversation
+ */
+export const DeleteOpenaiConversationParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+/**
+ * @summary List messages in a conversation
+ */
+export const ListOpenaiMessagesParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const ListOpenaiMessagesResponseItem = zod.object({
+  id: zod.number(),
+  conversationId: zod.number(),
+  role: zod.string(),
+  content: zod.string(),
+  createdAt: zod.coerce.date(),
+});
+export const ListOpenaiMessagesResponse = zod.array(
+  ListOpenaiMessagesResponseItem,
+);
+
+/**
+ * @summary Send a text message and receive a streaming text response
+ */
+export const SendOpenaiMessageParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const SendOpenaiMessageBody = zod.object({
+  content: zod.string(),
+});
+
+/**
+ * @summary Send audio and receive a streaming voice response
+ */
+export const SendOpenaiVoiceMessageParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const SendOpenaiVoiceMessageBody = zod.object({
+  audio: zod.string().describe("Base64-encoded audio data"),
+});
+
+/**
+ * @summary Get user progress through curriculum phases
+ */
+export const GetProgressQueryParams = zod.object({
+  sessionId: zod.coerce.string(),
+});
+
+export const GetProgressResponse = zod.object({
+  sessionId: zod.string(),
+  currentPhase: zod.number(),
+  currentTask: zod.number(),
+  completedTasks: zod.array(zod.string()),
+  selectedLanguage: zod.string(),
+  selectedOs: zod.string(),
+  conversationId: zod.number().nullish(),
+});
+
+/**
+ * @summary Mark a curriculum task as complete
+ */
+export const CompleteTaskBody = zod.object({
+  sessionId: zod.string(),
+  phaseIndex: zod.number(),
+  taskIndex: zod.number(),
+  language: zod.string(),
+  os: zod.string(),
+  conversationId: zod.number().nullish(),
+});
+
+export const CompleteTaskResponse = zod.object({
+  sessionId: zod.string(),
+  currentPhase: zod.number(),
+  currentTask: zod.number(),
+  completedTasks: zod.array(zod.string()),
+  selectedLanguage: zod.string(),
+  selectedOs: zod.string(),
+  conversationId: zod.number().nullish(),
+});
+
+/**
+ * @summary Convert text to J.'s voice audio
+ */
+export const TextToSpeechBody = zod.object({
+  text: zod.string(),
+  voice: zod.string().optional(),
+});
+
+export const TextToSpeechResponse = zod.object({
+  audio: zod.string().describe("Base64-encoded audio"),
+  format: zod.string(),
+});
+
+/**
+ * @summary Send a message to J. and receive streaming response
+ */
+export const ChatWithJBody = zod.object({
+  sessionId: zod.string(),
+  message: zod.string(),
+  conversationId: zod.number().nullish(),
+  language: zod.string(),
+  os: zod.string(),
+  phaseIndex: zod.number(),
+  taskIndex: zod.number(),
+  hardwareInfo: zod
+    .object({
+      cpuCores: zod.number().nullish(),
+      ramGb: zod.number().nullish(),
+      platform: zod.string().nullish(),
+    })
+    .optional(),
+});

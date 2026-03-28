@@ -6,4 +6,18 @@
  * OpenAPI spec version: 0.1.0
  */
 
+export * from "./chatWithJBody";
+export * from "./chatWithJBodyHardwareInfo";
+export * from "./completeTaskBody";
+export * from "./createOpenaiConversationBody";
+export * from "./getProgressParams";
 export * from "./healthStatus";
+export * from "./openaiConversation";
+export * from "./openaiConversationWithMessages";
+export * from "./openaiError";
+export * from "./openaiMessage";
+export * from "./sendOpenaiMessageBody";
+export * from "./sendOpenaiVoiceMessageBody";
+export * from "./ttsRequestBody";
+export * from "./ttsResponse";
+export * from "./userProgress";
