@@ -56,6 +56,8 @@ All routes prefixed with `/api`:
 - `POST /bluej/tts` — Text-to-speech for J.'s voice (OpenAI audio, echo voice)
 - `GET /bluej/progress?sessionId=` — Get user curriculum progress
 - `POST /bluej/progress/task` — Mark a curriculum task complete
+- `GET /bluej/download/j?os=&cpuCores=&ramGb=&language=` — Download J. Offline zip (hardware-tailored Ollama package)
+- `GET /bluej/download/clone?os=&language=&code=` — Download user's AI clone as a standalone zip
 
 ### OpenAI Routes (`/api/openai/`)
 - Standard conversation CRUD + streaming message/voice endpoints

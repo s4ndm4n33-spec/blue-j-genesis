@@ -19,7 +19,8 @@ interface BlueJState {
   hardwareMonitorEnabled: boolean;
   hardwarePermissionGranted: boolean | null;
   hardwareInfo: HardwareInfo;
-  activeTab: 'chat' | 'ide'; // For mobile view
+  activeTab: 'chat' | 'ide';
+  myCode: string;
   
   // Actions
   setConversationId: (id: number | null) => void;
@@ -29,6 +30,7 @@ interface BlueJState {
   grantHardwarePermission: () => void;
   denyHardwarePermission: () => void;
   setActiveTab: (tab: 'chat' | 'ide') => void;
+  setMyCode: (code: string) => void;
   detectSystem: () => void;
 }
 
@@ -52,12 +54,14 @@ export const useBlueJStore = create<BlueJState>()(
       hardwarePermissionGranted: null,
       hardwareInfo: { cpuCores: null, ramGb: null, platform: null },
       activeTab: 'chat',
+      myCode: "# Your code goes here...\n\nprint('Hello, J.')",
 
       setConversationId: (id) => set({ conversationId: id }),
       setSelectedLanguage: (lang) => set({ selectedLanguage: lang }),
       setSelectedOs: (os) => set({ selectedOs: os }),
       setHardwareMonitorEnabled: (enabled) => set({ hardwareMonitorEnabled: enabled }),
       setActiveTab: (tab) => set({ activeTab: tab }),
+      setMyCode: (code) => set({ myCode: code }),
       
       grantHardwarePermission: () => {
         const cores = navigator.hardwareConcurrency || null;
@@ -99,7 +103,8 @@ export const useBlueJStore = create<BlueJState>()(
         selectedLanguage: state.selectedLanguage,
         selectedOs: state.selectedOs,
         hardwareMonitorEnabled: state.hardwareMonitorEnabled,
-        hardwarePermissionGranted: state.hardwarePermissionGranted
+        hardwarePermissionGranted: state.hardwarePermissionGranted,
+        myCode: state.myCode
       })
     }
   )
