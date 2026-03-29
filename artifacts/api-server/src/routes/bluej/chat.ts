@@ -162,8 +162,12 @@ async function generateWithGauntlet(
     }
 
     if (attempt >= maxRetries) {
-      // Retries exhausted — send last response (bounded, cannot block indefinitely)
-      return lastResponse;
+      // Hard-fail: strip all code blocks — never send non-compliant code
+      const safeResponse = lastResponse.replace(
+        /```[\s\S]*?```/g,
+        "[Code withheld: style validation could not confirm compliance after multiple revision attempts. Please ask me to try again.]"
+      );
+      return safeResponse.trim();
     }
 
     // Violations found — re-prompt J. to correct every flagged block
@@ -256,7 +260,6 @@ router.post("/", async (req, res) => {
       { role: "user" as const, content: message },
     ];
 
-    //
     const fullResponse = await generateWithGauntlet(chatMessages, language);
 
     await db.insert(messagesTable).values({
@@ -270,7 +273,6 @@ router.post("/", async (req, res) => {
       .set({ conversationId, selectedLanguage: language, selectedOs: os, updatedAt: new Date() })
       .where(eq(userProgressTable.sessionId, sessionId));
 
-    //
     res.setHeader("Content-Type", "text/event-stream");
     res.setHeader("Cache-Control", "no-cache");
     res.setHeader("Connection", "keep-alive");
