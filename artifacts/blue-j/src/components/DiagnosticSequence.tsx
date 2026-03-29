@@ -41,7 +41,11 @@ export function DiagnosticSequence({ onComplete }: { onComplete: () => void }) {
   const [phase, setPhase] = useState<'scanning' | 'results' | 'done'>('scanning');
 
   const addLine = useCallback((line: DiagnosticLine) => {
-    setLines(prev => [...prev, line]);
+    setLines(prev => {
+      const exists = prev.some(l => l.id === line.id);
+      if (exists) return prev.map(l => l.id === line.id ? line : l);
+      return [...prev, line];
+    });
   }, []);
 
   useEffect(() => {

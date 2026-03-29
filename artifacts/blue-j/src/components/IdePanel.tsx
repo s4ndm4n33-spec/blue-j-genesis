@@ -18,7 +18,7 @@ const LANG_MAP: Record<string, string> = {
 };
 
 function extractCodeBlock(content: string): { code: string; lang: string } {
-  const match = content.match(/```(\w+)?\n([\s\S]*?)```/);
+  const match = content.match(/```([\w+#.-]+)?\n([\s\S]*?)```/);
   if (match) {
     const rawLang = (match[1] ?? 'python').toLowerCase();
     return { code: match[2].trim(), lang: LANG_MAP[rawLang] ?? rawLang };

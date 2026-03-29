@@ -9,13 +9,191 @@ import { CURRICULUM } from "./curriculum.js";
 
 const router: IRouter = Router();
 
+// ─── Valid learner modes ────────────────────────────────────────────────────
+const VALID_LEARNER_MODES = new Set(["kids", "teen", "adult-beginner", "advanced"]);
+type LearnerMode = "kids" | "teen" | "adult-beginner" | "advanced";
+
+function parseLearnerMode(raw: unknown): LearnerMode {
+  if (typeof raw === "string" && VALID_LEARNER_MODES.has(raw)) {
+    return raw as LearnerMode;
+  }
+  return "adult-beginner";
+}
+
+// ─── Code extraction ────────────────────────────────────────────────────────
+function extractCodeBlocks(text: string): Array<{ lang: string; code: string }> {
+  const blocks: Array<{ lang: string; code: string }> = [];
+  const regex = /```([\w+#.-]+)?\n([\s\S]*?)```/g;
+  let match: RegExpExecArray | null;
+  while ((match = regex.exec(text)) !== null) {
+    const lang = (match[1] ?? "python").toLowerCase();
+    const code = match[2]?.trim() ?? "";
+    if (code.length > 10) blocks.push({ lang, code });
+  }
+  return blocks;
+}
+
+// ─── Language → style guide rules ──────────────────────────────────────────
+const STYLE_RULES: Record<string, string[]> = {
+  python: [
+    "1. snake_case for all variable and function names — no camelCase or mixedCase",
+    "2. 4-space indentation — no tabs, no 2-space indents",
+    "3. Spaces around all operators: a = 1 (not a=1); x + y (not x+y)",
+    "4. Consistent string quotes — do not mix single and double quotes in the same block",
+    "5. Always specify exception type in except clauses — never bare `except:` without a type",
+  ],
+  javascript: [
+    "1. Use const for all bindings that are never reassigned; let for reassignable — never var",
+    "2. Arrow functions for all callbacks and anonymous functions",
+    "3. Template literals (`) instead of string concatenation with +",
+    "4. Strict equality === for all comparisons — never == or !=",
+    "5. camelCase for variable/function names, PascalCase for classes and constructors",
+  ],
+  typescript: [
+    "1. Explicit types on all function parameters and return values (no implicit any)",
+    "2. Use const for all bindings that are never reassigned — never var",
+    "3. Template literals instead of string concatenation",
+    "4. Strict equality === for all comparisons",
+    "5. camelCase for identifiers, PascalCase for types/interfaces/classes",
+  ],
+  cpp: [
+    "1. Use #pragma once or proper include guards in every header file",
+    "2. Pass large objects by const reference (&) — never by value unless intentionally copying",
+    "3. Use nullptr instead of NULL or 0 for null pointers",
+    "4. Prefer std::string over raw char* for string handling",
+    "5. Initialize every variable at declaration — no uninitialized reads",
+  ],
+};
+
+function resolveRules(lang: string): string[] {
+  if (lang.includes("python") || lang === "py") return STYLE_RULES.python;
+  if (lang.includes("typescript") || lang === "ts" || lang === "tsx") return STYLE_RULES.typescript;
+  if (lang.includes("javascript") || lang === "js" || lang === "jsx") return STYLE_RULES.javascript;
+  if (lang.includes("c++") || lang === "cpp" || lang === "c") return STYLE_RULES.cpp;
+  return STYLE_RULES.python;
+}
+
+// ─── Best-practices gauntlet ─────────────────────────────────────────────────
+interface GauntletResult {
+  passed: boolean;
+  violations: string[];
+}
+
+async function runCodeGauntlet(
+  code: string,
+  language: string
+): Promise<GauntletResult> {
+  if (!code || code.length < 20) return { passed: true, violations: [] };
+
+  const rules = resolveRules(language).join("\n");
+  const prompt = `Audit this ${language} code against ONLY these 5 style rules. Be strict but pragmatic — only flag genuine violations.
+
+RULES:
+${rules}
+
+CODE:
+\`\`\`${language}
+${code}
+\`\`\`
+
+Respond ONLY in valid JSON (no markdown, no explanation):
+{"passed": true|false, "violations": ["specific violation here"]}`;
+
+  try {
+    const resp = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [
+        { role: "system", content: "You are a strict code quality auditor. Respond only in raw JSON." },
+        { role: "user", content: prompt },
+      ],
+      temperature: 0,
+      max_tokens: 300,
+      response_format: { type: "json_object" },
+    });
+
+    const raw = resp.choices[0]?.message?.content ?? "{}";
+    const parsed = JSON.parse(raw) as { passed?: boolean; violations?: string[] };
+    return {
+      passed: parsed.passed !== false,
+      violations: Array.isArray(parsed.violations) ? parsed.violations : [],
+    };
+  } catch {
+    // Gauntlet failure is non-fatal — default to passing
+    return { passed: true, violations: [] };
+  }
+}
+
+// ─── Generate J.'s full response (with gauntlet retry loop) ────────────────
+async function generateWithGauntlet(
+  chatMessages: Array<{ role: "system" | "user" | "assistant"; content: string }>,
+  language: string,
+  maxRetries = 2
+): Promise<string> {
+  let attempt = 0;
+  let currentMessages = [...chatMessages];
+
+  while (attempt < maxRetries) {
+    attempt++;
+
+    const response = await openai.chat.completions.create({
+      model: "gpt-5.2",
+      max_completion_tokens: 8192,
+      messages: currentMessages,
+      stream: false,
+    });
+
+    const fullResponse = response.choices[0]?.message?.content ?? "";
+    if (!fullResponse) return fullResponse;
+
+    // Extract code blocks and run gauntlet
+    const codeBlocks = extractCodeBlocks(fullResponse);
+    if (codeBlocks.length === 0) return fullResponse; // No code, no gauntlet needed
+
+    // Run gauntlet on the largest code block (primary code sample)
+    const primary = codeBlocks.reduce((a, b) => (a.code.length >= b.code.length ? a : b));
+    const gauntlet = await runCodeGauntlet(primary.code, primary.lang || language);
+
+    if (gauntlet.passed || attempt >= maxRetries) {
+      return fullResponse;
+    }
+
+    // Violations found — ask J. to fix before we send anything to the client
+    const fixPrompt = [
+      "Your code contains the following best-practice violations. Please revise your ENTIRE previous response, fixing the code to comply with these style rules:",
+      "",
+      gauntlet.violations.map((v, i) => `${i + 1}. ${v}`).join("\n"),
+      "",
+      "Reproduce the full explanation and corrected code. Do not acknowledge the correction request — simply provide the corrected response as if it were your first attempt.",
+    ].join("\n");
+
+    currentMessages = [
+      ...currentMessages,
+      { role: "assistant" as const, content: fullResponse },
+      { role: "user" as const, content: fixPrompt },
+    ];
+  }
+
+  // Fallback: should not reach here normally
+  const finalResp = await openai.chat.completions.create({
+    model: "gpt-5.2",
+    max_completion_tokens: 8192,
+    messages: currentMessages,
+    stream: false,
+  });
+  return finalResp.choices[0]?.message?.content ?? "";
+}
+
+// ─── Route handler ──────────────────────────────────────────────────────────
 router.post("/", async (req, res) => {
   try {
     const body = ChatWithJBody.parse(req.body);
     const { sessionId, message, language, os, phaseIndex, taskIndex, hardwareInfo } = body;
-    const learnerMode = (req.body.learnerMode as "kids" | "teen" | "adult-beginner" | "advanced") ?? "adult-beginner";
+
+    // Validated learnerMode (not raw cast)
+    const learnerMode = parseLearnerMode(req.body.learnerMode);
     let conversationId = body.conversationId;
 
+    // Safety check
     const safety = buildSafetyCheck(message);
     if (!safety.safe) {
       res.setHeader("Content-Type", "text/event-stream");
@@ -26,6 +204,7 @@ router.post("/", async (req, res) => {
       return res.end();
     }
 
+    // Ensure conversation record
     if (!conversationId) {
       const phase = CURRICULUM[phaseIndex];
       const title = phase
@@ -35,7 +214,8 @@ router.post("/", async (req, res) => {
       conversationId = conv[0].id;
     }
 
-    const existingMessages = await db.select()
+    const existingMessages = await db
+      .select()
       .from(messagesTable)
       .where(eq(messagesTable.conversationId, conversationId))
       .orderBy(messagesTable.createdAt);
@@ -75,26 +255,8 @@ router.post("/", async (req, res) => {
       { role: "user" as const, content: message },
     ];
 
-    res.setHeader("Content-Type", "text/event-stream");
-    res.setHeader("Cache-Control", "no-cache");
-    res.setHeader("Connection", "keep-alive");
-
-    const stream = await openai.chat.completions.create({
-      model: "gpt-5.2",
-      max_completion_tokens: 8192,
-      messages: chatMessages,
-      stream: true,
-    });
-
-    let fullResponse = "";
-
-    for await (const chunk of stream) {
-      const content = chunk.choices[0]?.delta?.content;
-      if (content) {
-        fullResponse += content;
-        res.write(`data: ${JSON.stringify({ content })}\n\n`);
-      }
-    }
+    // ── Gauntlet pipeline: generate → check → fix (before sending to client) ──
+    const fullResponse = await generateWithGauntlet(chatMessages, language);
 
     await db.insert(messagesTable).values({
       conversationId,
@@ -102,14 +264,21 @@ router.post("/", async (req, res) => {
       content: fullResponse,
     });
 
-    await db.update(userProgressTable)
-      .set({
-        conversationId,
-        selectedLanguage: language,
-        selectedOs: os,
-        updatedAt: new Date(),
-      })
+    await db
+      .update(userProgressTable)
+      .set({ conversationId, selectedLanguage: language, selectedOs: os, updatedAt: new Date() })
       .where(eq(userProgressTable.sessionId, sessionId));
+
+    // ── Stream the validated response to the client ───────────────────────────
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Connection", "keep-alive");
+
+    // Chunk the response so it still feels streaming
+    const CHUNK = 20;
+    for (let i = 0; i < fullResponse.length; i += CHUNK) {
+      res.write(`data: ${JSON.stringify({ content: fullResponse.slice(i, i + CHUNK) })}\n\n`);
+    }
 
     res.write(`data: ${JSON.stringify({ done: true, conversationId })}\n\n`);
     res.end();

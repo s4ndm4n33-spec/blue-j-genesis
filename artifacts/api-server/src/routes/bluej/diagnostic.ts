@@ -1,10 +1,21 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import { conversations as conversationsTable, messages as messagesTable, userProgressTable } from "@workspace/db";
-import { eq, and, lt, isNull } from "drizzle-orm";
+import { eq, notInArray } from "drizzle-orm";
 import { openai } from "@workspace/integrations-openai-ai-server";
 
 const router: IRouter = Router();
+
+function computeHardwareStatus(
+  cpuCores?: number | null,
+  ramGb?: number | null
+): "optimal" | "adequate" | "constrained" {
+  const cores = cpuCores ?? 0;
+  const ram = ramGb ?? 0;
+  if (cores >= 8 && ram >= 16) return "optimal";
+  if (cores >= 4 && ram >= 8) return "adequate";
+  return "constrained";
+}
 
 router.post("/", async (req, res) => {
   try {
@@ -14,29 +25,19 @@ router.post("/", async (req, res) => {
       ramGb?: number | null;
     };
 
-    const report: {
-      orphanedConversations: number;
-      orphanedMessages: number;
-      sessionExists: boolean;
-      hardwareStatus: "optimal" | "adequate" | "constrained";
-      jSummary: string;
-    } = {
-      orphanedConversations: 0,
-      orphanedMessages: 0,
-      sessionExists: false,
-      hardwareStatus: "adequate",
-      jSummary: "",
-    };
+    let orphanedConversations = 0;
+    let orphanedMessages = 0;
+    let sessionExists = false;
 
-    // Check if session exists
-    const existingProgress = await db.select()
+    // ── 1. Session check / init ────────────────────────────────────────────
+    const existing = await db
+      .select({ id: userProgressTable.id })
       .from(userProgressTable)
-      .where(eq(userProgressTable.sessionId, sessionId));
+      .where(eq(userProgressTable.sessionId, sessionId ?? ""));
 
-    report.sessionExists = existingProgress.length > 0;
+    sessionExists = existing.length > 0;
 
-    // Create progress record if first session
-    if (!report.sessionExists) {
+    if (!sessionExists && sessionId) {
       await db.insert(userProgressTable).values({
         sessionId,
         currentPhase: 0,
@@ -47,38 +48,79 @@ router.post("/", async (req, res) => {
       });
     }
 
-    // Purge conversations older than 30 days with no messages
-    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-    const orphanedConvos = await db.select({ id: conversationsTable.id })
-      .from(conversationsTable)
-      .where(lt(conversationsTable.createdAt, thirtyDaysAgo));
+    // ── 2. Find + purge orphaned conversations (no messages) ───────────────
+    try {
+      // All conversation IDs that have at least one message
+      const convsWithMessages = await db
+        .selectDistinct({ cid: messagesTable.conversationId })
+        .from(messagesTable);
 
-    report.orphanedConversations = orphanedConvos.length;
+      const usedIds = convsWithMessages.map((r) => r.cid);
 
-    // Assess hardware
-    const ram = ramGb ?? 0;
-    const cores = cpuCores ?? 0;
+      // All conversations
+      const allConvs = await db
+        .select({ id: conversationsTable.id })
+        .from(conversationsTable);
 
-    if (ram >= 8 && cores >= 4) {
-      report.hardwareStatus = "optimal";
-    } else if (ram >= 4 || cores >= 2) {
-      report.hardwareStatus = "adequate";
-    } else {
-      report.hardwareStatus = "constrained";
+      const orphanIds = allConvs
+        .map((c) => c.id)
+        .filter((id) => !usedIds.includes(id));
+
+      orphanedConversations = orphanIds.length;
+
+      if (orphanIds.length > 0) {
+        // Delete orphaned conversations (cascade deletes any stray messages too)
+        await db
+          .delete(conversationsTable)
+          .where(notInArray(conversationsTable.id, usedIds.length > 0 ? usedIds : [-1]));
+      }
+
+      // ── 3. Find + purge orphaned messages (no parent conversation) ─────
+      //   In normal operation these can't exist (FK + cascade), but check anyway.
+      const validConvsAfter = await db
+        .select({ id: conversationsTable.id })
+        .from(conversationsTable);
+
+      const validIds = validConvsAfter.map((c) => c.id);
+
+      if (validIds.length > 0) {
+        const strayMsgs = await db
+          .select({ id: messagesTable.id })
+          .from(messagesTable)
+          .where(notInArray(messagesTable.conversationId, validIds));
+
+        orphanedMessages = strayMsgs.length;
+
+        if (strayMsgs.length > 0) {
+          await db
+            .delete(messagesTable)
+            .where(notInArray(messagesTable.conversationId, validIds));
+        }
+      }
+    } catch (dbErr) {
+      req.log.warn({ dbErr }, "Orphan-purge query failed — non-fatal, continuing");
     }
 
-    // Generate J.'s diagnostic summary
-    const hwDesc = (cpuCores || ramGb)
-      ? `CPU: ${cpuCores ?? "unknown"} cores, RAM: ${ramGb ?? "unknown"}GB`
-      : "hardware telemetry not authorized";
+    // ── 4. Hardware assessment ─────────────────────────────────────────────
+    const hardwareStatus = computeHardwareStatus(cpuCores, ramGb);
 
-    const diagPrompt = `Generate a brief (2-3 sentences) system diagnostic clearance report in J.'s voice. 
-Facts: ${report.orphanedConversations} stale conversation records found${report.orphanedConversations > 0 ? " and purged" : ""}. 
-Hardware: ${hwDesc}. 
-Status: ${report.hardwareStatus}.
-${report.sessionExists ? "Returning operator detected — session data restored." : "New operator detected — fresh session initialized."}
+    // ── 5. J.'s diagnostic summary ─────────────────────────────────────────
+    const hwDesc =
+      cpuCores || ramGb
+        ? `CPU: ${cpuCores ?? "?"}×cores, RAM: ${ramGb ?? "?"}GB`
+        : "hardware telemetry not available";
 
-Be dry, precise, and British. End with one brief recommendation based on hardware constraints.`;
+    const diagPrompt = [
+      `System diagnostic clearance — report in J.'s voice (2 sentences max, under 50 words).`,
+      `Hardware: ${hwDesc}. Status: ${hardwareStatus.toUpperCase()}.`,
+      orphanedConversations > 0
+        ? `${orphanedConversations} orphaned conversation record(s) and ${orphanedMessages} orphaned message(s) were found and purged from the database.`
+        : `No orphaned records found in the database.`,
+      sessionExists
+        ? "Returning operator detected — session restored."
+        : "New operator detected — fresh session initialized.",
+      `Be dry, precise, and characteristically British. End with one hardware-specific recommendation.`,
+    ].join(" ");
 
     const jResponse = await openai.chat.completions.create({
       model: "gpt-4o-mini",
@@ -86,7 +128,7 @@ Be dry, precise, and British. End with one brief recommendation based on hardwar
         {
           role: "system",
           content:
-            "You are J. from B.L.U.E.-J. — dry wit, precise, British. Keep it under 60 words.",
+            "You are J. from B.L.U.E.-J. — dry wit, precise, British. Keep it under 55 words.",
         },
         { role: "user", content: diagPrompt },
       ],
@@ -94,14 +136,25 @@ Be dry, precise, and British. End with one brief recommendation based on hardwar
       max_tokens: 120,
     });
 
-    report.jSummary =
-      jResponse.choices[0]?.message?.content ??
-      "All systems nominal. Shall we proceed?";
+    const jSummary =
+      jResponse.choices[0]?.message?.content ?? "Systems nominal. Shall we proceed?";
 
-    res.json(report);
+    res.json({
+      orphanedConversations,
+      orphanedMessages,
+      sessionExists,
+      hardwareStatus,
+      jSummary,
+    });
   } catch (err) {
     req.log.error({ err }, "Diagnostic error");
-    res.status(500).json({ error: "Diagnostic failed" });
+    res.status(500).json({
+      orphanedConversations: 0,
+      orphanedMessages: 0,
+      sessionExists: false,
+      hardwareStatus: "adequate" as const,
+      jSummary: "Diagnostic inconclusive. Shall we proceed regardless?",
+    });
   }
 });
 
