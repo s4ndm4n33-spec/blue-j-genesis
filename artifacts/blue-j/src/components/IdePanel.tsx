@@ -56,6 +56,15 @@ export function IdePanel() {
   const [optimizing, setOptimizing] = useState(false);
   const [simResult, setSimResult] = useState<SimulationResult | null>(null);
   const terminalRef = useRef<HTMLDivElement>(null);
+  const highlightLayerRef = useRef<HTMLDivElement>(null);
+  const myCodeTextareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const syncHighlightScroll = () => {
+    if (highlightLayerRef.current && myCodeTextareaRef.current) {
+      highlightLayerRef.current.scrollTop = myCodeTextareaRef.current.scrollTop;
+      highlightLayerRef.current.scrollLeft = myCodeTextareaRef.current.scrollLeft;
+    }
+  };
 
   const { code: jCode, lang: jLang } = useMemo(() => {
     for (let i = messages.length - 1; i >= 0; i--) {
@@ -201,10 +210,12 @@ export function IdePanel() {
               </div>
             ) : (
               <div className="relative w-full h-full" style={{ minHeight: '200px' }}>
-                {/* Syntax-highlighted layer underneath (non-interactive) */}
+                {/* Syntax-highlighted layer — scroll-synced to textarea via ref */}
                 <div
+                  ref={highlightLayerRef}
                   className="absolute inset-0 p-4 pt-10 pointer-events-none overflow-hidden"
                   aria-hidden="true"
+                  style={{ overflowY: 'hidden', overflowX: 'hidden' }}
                 >
                   <SyntaxHighlighter
                     language={LANG_MAP[selectedLanguage] ?? selectedLanguage}
@@ -215,9 +226,8 @@ export function IdePanel() {
                       background: 'transparent',
                       fontSize: '0.85rem',
                       lineHeight: '1.6',
-                      minHeight: '100%',
                       whiteSpace: 'pre',
-                      overflowX: 'hidden',
+                      overflow: 'visible',
                     }}
                     showLineNumbers
                     lineNumberStyle={{ color: '#4a5568', minWidth: '2.5em' }}
@@ -226,11 +236,13 @@ export function IdePanel() {
                     {myCode || ' '}
                   </SyntaxHighlighter>
                 </div>
-                {/* Transparent textarea on top — captures all user input */}
+                {/* Transparent textarea — captures input; scroll drives the highlight layer */}
                 <textarea
+                  ref={myCodeTextareaRef}
                   value={myCode}
                   onChange={(e) => setMyCode(e.target.value)}
-                  className="absolute inset-0 w-full h-full p-4 pt-10 bg-transparent font-mono text-sm focus:outline-none resize-none"
+                  onScroll={syncHighlightScroll}
+                  className="absolute inset-0 w-full h-full p-4 pt-10 bg-transparent font-mono focus:outline-none resize-none overflow-auto"
                   style={{
                     lineHeight: '1.6',
                     fontSize: '0.85rem',
@@ -241,12 +253,10 @@ export function IdePanel() {
                     zIndex: 1,
                   }}
                   spellCheck={false}
-                  placeholder=""
                   autoComplete="off"
                   autoCorrect="off"
                   autoCapitalize="off"
                 />
-                {/* Placeholder shown only when empty */}
                 {!myCode && (
                   <div className="absolute top-10 left-16 text-gray-600 font-mono text-sm pointer-events-none" style={{ lineHeight: '1.6', fontSize: '0.85rem' }}>
                     # Write or paste your code here...

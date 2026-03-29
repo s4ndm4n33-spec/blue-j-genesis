@@ -114,8 +114,11 @@ Respond ONLY in valid JSON (no markdown, no explanation):
       violations: Array.isArray(parsed.violations) ? parsed.violations : [],
     };
   } catch {
-    // Gauntlet failure is non-fatal — default to passing
-    return { passed: true, violations: [] };
+    // Fail-closed: treat audit service failure as unvalidated — force a re-prompt
+    return {
+      passed: false,
+      violations: ["[Audit service returned unreadable response — code must be reviewed for style compliance before sending]"],
+    };
   }
 }
 
@@ -126,6 +129,7 @@ async function generateWithGauntlet(
 ): Promise<string> {
   let attempt = 0;
   let currentMessages = [...chatMessages];
+  let lastResponse = "";
 
   while (attempt < maxRetries) {
     attempt++;
@@ -138,27 +142,37 @@ async function generateWithGauntlet(
     });
 
     const fullResponse = response.choices[0]?.message?.content ?? "";
+    lastResponse = fullResponse;
     if (!fullResponse) return fullResponse;
 
-    // Extract code blocks and run gauntlet
     const codeBlocks = extractCodeBlocks(fullResponse);
-    if (codeBlocks.length === 0) return fullResponse; // No code, no gauntlet needed
+    if (codeBlocks.length === 0) return fullResponse;
 
-    // Run gauntlet on the largest code block (primary code sample)
-    const primary = codeBlocks.reduce((a, b) => (a.code.length >= b.code.length ? a : b));
-    const gauntlet = await runCodeGauntlet(primary.code, primary.lang || language);
+    // Validate ALL code blocks — aggregate violations across every block
+    const allViolations: string[] = [];
+    for (const block of codeBlocks) {
+      const result = await runCodeGauntlet(block.code, block.lang || language);
+      if (!result.passed) {
+        allViolations.push(...result.violations);
+      }
+    }
 
-    if (gauntlet.passed || attempt >= maxRetries) {
+    if (allViolations.length === 0) {
       return fullResponse;
     }
 
-    // Violations found — ask J. to fix before we send anything to the client
+    if (attempt >= maxRetries) {
+      // Retries exhausted — send last response (bounded, cannot block indefinitely)
+      return lastResponse;
+    }
+
+    // Violations found — re-prompt J. to correct every flagged block
     const fixPrompt = [
-      "Your code contains the following best-practice violations. Please revise your ENTIRE previous response, fixing the code to comply with these style rules:",
+      "Your code contains the following best-practice violations across one or more code blocks. Please revise your ENTIRE previous response to correct all of them:",
       "",
-      gauntlet.violations.map((v, i) => `${i + 1}. ${v}`).join("\n"),
+      allViolations.map((v, i) => `${i + 1}. ${v}`).join("\n"),
       "",
-      "Reproduce the full explanation and corrected code. Do not acknowledge the correction request — simply provide the corrected response as if it were your first attempt.",
+      "Reproduce the full explanation with corrected code. Do not acknowledge this correction — simply provide the improved response as if it were your first attempt.",
     ].join("\n");
 
     currentMessages = [
@@ -168,14 +182,7 @@ async function generateWithGauntlet(
     ];
   }
 
-  // Fallback: should not reach here normally
-  const finalResp = await openai.chat.completions.create({
-    model: "gpt-5.2",
-    max_completion_tokens: 8192,
-    messages: currentMessages,
-    stream: false,
-  });
-  return finalResp.choices[0]?.message?.content ?? "";
+  return lastResponse;
 }
 
 router.post("/", async (req, res) => {
