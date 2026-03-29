@@ -13,6 +13,7 @@ router.post("/", async (req, res) => {
   try {
     const body = ChatWithJBody.parse(req.body);
     const { sessionId, message, language, os, phaseIndex, taskIndex, hardwareInfo } = body;
+    const learnerMode = (req.body.learnerMode as "kids" | "teen" | "adult-beginner" | "advanced") ?? "adult-beginner";
     let conversationId = body.conversationId;
 
     const safety = buildSafetyCheck(message);
@@ -56,6 +57,7 @@ router.post("/", async (req, res) => {
       os,
       hardwareInfo: hardwareInfo as { cpuCores?: number | null; ramGb?: number | null; platform?: string | null } | null | undefined,
       messageHistory,
+      learnerMode,
     });
 
     await db.insert(messagesTable).values({

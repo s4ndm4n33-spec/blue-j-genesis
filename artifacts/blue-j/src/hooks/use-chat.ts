@@ -1,49 +1,41 @@
-import { useState, useCallback } from 'react';
-import { useBlueJStore } from '@/lib/store';
+import { useCallback } from 'react';
+import { useBlueJStore, type ChatMessage } from '@/lib/store';
 import { useTextToSpeech } from '@/hooks/use-bluej-api';
 
-export interface ChatMessage {
-  id: string;
-  role: 'user' | 'assistant' | 'system';
-  content: string;
-  timestamp: number;
-}
+export type { ChatMessage };
 
 export function useChatStream() {
-  const [messages, setMessages] = useState<ChatMessage[]>([{
-    id: 'welcome',
-    role: 'assistant',
-    content: "Greetings. I am J. I understand we are to build a localized AI instance today. A clone of myself, if you will. Let us begin by evaluating your system environment.",
-    timestamp: Date.now()
-  }]);
-  const [isTyping, setIsTyping] = useState(false);
-  
-  const { 
-    sessionId, 
-    conversationId, 
-    setConversationId, 
-    selectedLanguage, 
-    selectedOs, 
-    hardwareInfo 
+  const {
+    sessionId,
+    conversationId, setConversationId,
+    selectedLanguage, selectedOs,
+    hardwareInfo, learnerMode,
+    messages, isTyping,
+    addMessage, updateLastAssistantMessage, setIsTyping, addSystemMessage,
   } = useBlueJStore();
 
   const ttsMutation = useTextToSpeech();
 
-  const sendMessage = useCallback(async (content: string, onAudioReceived?: (b64: string, fmt: string) => void) => {
+  const sendMessage = useCallback(async (
+    content: string,
+    onAudioReceived?: (b64: string, fmt: string) => void,
+    isVoice = false
+  ) => {
     if (!content.trim()) return;
 
     const userMsg: ChatMessage = {
       id: Date.now().toString(),
       role: 'user',
       content,
-      timestamp: Date.now()
+      timestamp: Date.now(),
+      voiceInput: isVoice,
     };
-    
-    setMessages(prev => [...prev, userMsg]);
+
+    addMessage(userMsg);
     setIsTyping(true);
 
     try {
-      const response = await fetch('/api/bluej/chat', {
+      const response = await fetch(`/api/bluej/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -52,9 +44,10 @@ export function useChatStream() {
           conversationId,
           language: selectedLanguage,
           os: selectedOs,
-          phaseIndex: 1, // hardcoded for demo, normally from progress
-          taskIndex: 1,
-          hardwareInfo
+          phaseIndex: 0,
+          taskIndex: 0,
+          hardwareInfo,
+          learnerMode,
         })
       });
 
@@ -63,51 +56,46 @@ export function useChatStream() {
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let assistantContent = "";
-      
-      const assistantMsgId = (Date.now() + 1).toString();
-      
-      setMessages(prev => [...prev, {
+
+      const assistantMsgId = `a-${Date.now()}`;
+
+      addMessage({
         id: assistantMsgId,
         role: 'assistant',
         content: "",
         timestamp: Date.now()
-      }]);
+      });
 
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
-        
+
         const chunk = decoder.decode(value);
-        const lines = chunk.split('\n').filter(line => line.trim().startsWith('data: '));
-        
+        const lines = chunk.split('\n').filter(l => l.trim().startsWith('data: '));
+
         for (const line of lines) {
           const dataStr = line.replace('data: ', '').trim();
           if (dataStr === '[DONE]') continue;
-          
           try {
             const data = JSON.parse(dataStr);
             if (data.content) {
               assistantContent += data.content;
-              setMessages(prev => prev.map(m => 
-                m.id === assistantMsgId ? { ...m, content: assistantContent } : m
-              ));
+              updateLastAssistantMessage(assistantMsgId, assistantContent);
             }
             if (data.conversationId && !conversationId) {
               setConversationId(data.conversationId);
             }
-          } catch (e) {
-            console.error("Failed to parse SSE chunk", e, dataStr);
+          } catch {
+            // Incomplete SSE chunk — skip
           }
         }
       }
 
       setIsTyping(false);
 
-      // Trigger TTS for the final assistant content
       if (assistantContent && onAudioReceived) {
-        // Strip code blocks for speech to avoid speaking python syntax character by character
         const textForSpeech = assistantContent.replace(/```[\s\S]*?```/g, " [Code Block] ");
-        ttsMutation.mutate({ data: { text: textForSpeech, voice: 'alloy' } }, {
+        ttsMutation.mutate({ data: { text: textForSpeech, voice: 'echo' } }, {
           onSuccess: (res) => onAudioReceived(res.audio, res.format)
         });
       }
@@ -115,14 +103,18 @@ export function useChatStream() {
     } catch (err) {
       console.error("Chat error", err);
       setIsTyping(false);
-      setMessages(prev => [...prev, {
-        id: Date.now().toString(),
+      addMessage({
+        id: `err-${Date.now()}`,
         role: 'system',
         content: "ERROR: Connection to J. interrupted. ULTRON protocol failsafe engaged.",
         timestamp: Date.now()
-      }]);
+      });
     }
-  }, [sessionId, conversationId, selectedLanguage, selectedOs, hardwareInfo, setConversationId, ttsMutation]);
+  }, [
+    sessionId, conversationId, selectedLanguage, selectedOs,
+    hardwareInfo, learnerMode, setConversationId,
+    addMessage, updateLastAssistantMessage, setIsTyping, ttsMutation
+  ]);
 
-  return { messages, isTyping, sendMessage };
+  return { messages, isTyping, sendMessage, addSystemMessage };
 }

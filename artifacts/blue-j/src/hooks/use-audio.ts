@@ -9,15 +9,12 @@ export function useAudioOutput() {
       audioRef.current.pause();
       audioRef.current.currentTime = 0;
     }
-
     const audioUrl = `data:audio/${format};base64,${base64}`;
     const audio = new Audio(audioUrl);
     audioRef.current = audio;
-
     audio.onplay = () => setIsPlaying(true);
     audio.onended = () => setIsPlaying(false);
     audio.onerror = () => setIsPlaying(false);
-
     audio.play().catch(e => {
       console.error("[Audio] Failed to play TTS:", e);
       setIsPlaying(false);
@@ -35,48 +32,79 @@ export function useAudioOutput() {
   return { isPlaying, playBase64Audio, stopAudio };
 }
 
+export type RecordingState = 'idle' | 'recording' | 'transcribing' | 'error';
+
 export function useVoiceRecording(onTranscription: (text: string) => void) {
-  const [isRecording, setIsRecording] = useState(false);
-  const mediaRecorder = useRef<MediaRecorder | null>(null);
-  const chunks = useRef<Blob[]>([]);
+  const [recordingState, setRecordingState] = useState<RecordingState>('idle');
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
+  const streamRef = useRef<MediaStream | null>(null);
+
+  const isRecording = recordingState === 'recording';
+  const isTranscribing = recordingState === 'transcribing';
 
   const startRecording = useCallback(async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      mediaRecorder.current = new MediaRecorder(stream);
-      chunks.current = [];
+      streamRef.current = stream;
 
-      mediaRecorder.current.ondataavailable = (e) => {
-        if (e.data.size > 0) chunks.current.push(e.data);
+      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+        ? 'audio/webm;codecs=opus'
+        : MediaRecorder.isTypeSupported('audio/webm')
+        ? 'audio/webm'
+        : '';
+
+      const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : {});
+      mediaRecorderRef.current = recorder;
+      chunksRef.current = [];
+
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) chunksRef.current.push(e.data);
       };
 
-      mediaRecorder.current.onstop = async () => {
-        const blob = new Blob(chunks.current, { type: 'audio/webm' });
-        // Convert to base64
-        const reader = new FileReader();
-        reader.readAsDataURL(blob);
-        reader.onloadend = async () => {
-          const base64data = (reader.result as string).split(',')[1];
-          // We'd send this base64data to the transcription endpoint
-          // For now, simulating transcription success to trigger text send
-          onTranscription("[Voice input recorded]");
-        };
+      recorder.onstop = async () => {
+        setRecordingState('transcribing');
+        streamRef.current?.getTracks().forEach(t => t.stop());
+
+        try {
+          const blob = new Blob(chunksRef.current, { type: mimeType || 'audio/webm' });
+          const arrayBuffer = await blob.arrayBuffer();
+          const bytes = new Uint8Array(arrayBuffer);
+          let binary = '';
+          for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
+          const base64 = btoa(binary);
+
+          const resp = await fetch(`/api/bluej/stt`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ audio: base64, format: 'webm' }),
+          });
+
+          if (!resp.ok) throw new Error(`STT failed: ${resp.status}`);
+          const { transcript } = await resp.json() as { transcript: string };
+          onTranscription(transcript || '');
+          setRecordingState('idle');
+        } catch (err) {
+          console.error('[STT] Transcription error:', err);
+          setRecordingState('error');
+          setTimeout(() => setRecordingState('idle'), 3000);
+        }
       };
 
-      mediaRecorder.current.start();
-      setIsRecording(true);
+      recorder.start();
+      setRecordingState('recording');
     } catch (err) {
-      console.error("[Voice] Microphone access denied", err);
+      console.error('[Voice] Microphone access denied:', err);
+      setRecordingState('error');
+      setTimeout(() => setRecordingState('idle'), 3000);
     }
   }, [onTranscription]);
 
   const stopRecording = useCallback(() => {
-    if (mediaRecorder.current && isRecording) {
-      mediaRecorder.current.stop();
-      mediaRecorder.current.stream.getTracks().forEach(t => t.stop());
-      setIsRecording(false);
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.stop();
     }
-  }, [isRecording]);
+  }, []);
 
-  return { isRecording, startRecording, stopRecording };
+  return { isRecording, isTranscribing, recordingState, startRecording, stopRecording };
 }

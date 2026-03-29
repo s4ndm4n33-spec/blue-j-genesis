@@ -1,8 +1,31 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { type UserProgress, type CompleteTaskBody, type TtsRequestBody, type TtsResponse } from "@workspace/api-client-react";
 
-// Wrapping the generated types into native fetch hooks to handle API routing securely
-// Since this is a specialized frontend we want to control the fetch credentials perfectly
+export interface UserProgress {
+  sessionId: string;
+  currentPhase: number;
+  currentTask: number;
+  completedTasks: number[];
+  selectedLanguage: string;
+  selectedOs: string;
+}
+
+export interface CompleteTaskBody {
+  sessionId: string;
+  phaseIndex: number;
+  taskIndex: number;
+  selectedLanguage?: string;
+  selectedOs?: string;
+}
+
+export interface TtsRequestBody {
+  text: string;
+  voice?: string;
+}
+
+export interface TtsResponse {
+  audio: string;
+  format: string;
+}
 
 export function useGetProgress(sessionId: string) {
   return useQuery({
@@ -10,7 +33,6 @@ export function useGetProgress(sessionId: string) {
     queryFn: async (): Promise<UserProgress> => {
       const res = await fetch(`/api/bluej/progress?sessionId=${sessionId}`);
       if (!res.ok) {
-        // Return default progress if not found
         return {
           sessionId,
           currentPhase: 1,
