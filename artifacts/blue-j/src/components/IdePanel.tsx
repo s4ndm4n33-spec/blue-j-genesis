@@ -200,14 +200,59 @@ export function IdePanel() {
                 </SyntaxHighlighter>
               </div>
             ) : (
-              <textarea
-                value={myCode}
-                onChange={(e) => setMyCode(e.target.value)}
-                className="w-full h-full p-4 pt-10 bg-transparent text-gray-300 font-mono text-sm focus:outline-none resize-none"
-                style={{ lineHeight: '1.6' }}
-                spellCheck={false}
-                placeholder="Write or paste your code here..."
-              />
+              <div className="relative w-full h-full" style={{ minHeight: '200px' }}>
+                {/* Syntax-highlighted layer underneath (non-interactive) */}
+                <div
+                  className="absolute inset-0 p-4 pt-10 pointer-events-none overflow-hidden"
+                  aria-hidden="true"
+                >
+                  <SyntaxHighlighter
+                    language={LANG_MAP[selectedLanguage] ?? selectedLanguage}
+                    style={vscDarkPlus}
+                    customStyle={{
+                      margin: 0,
+                      padding: 0,
+                      background: 'transparent',
+                      fontSize: '0.85rem',
+                      lineHeight: '1.6',
+                      minHeight: '100%',
+                      whiteSpace: 'pre',
+                      overflowX: 'hidden',
+                    }}
+                    showLineNumbers
+                    lineNumberStyle={{ color: '#4a5568', minWidth: '2.5em' }}
+                    wrapLongLines={false}
+                  >
+                    {myCode || ' '}
+                  </SyntaxHighlighter>
+                </div>
+                {/* Transparent textarea on top — captures all user input */}
+                <textarea
+                  value={myCode}
+                  onChange={(e) => setMyCode(e.target.value)}
+                  className="absolute inset-0 w-full h-full p-4 pt-10 bg-transparent font-mono text-sm focus:outline-none resize-none"
+                  style={{
+                    lineHeight: '1.6',
+                    fontSize: '0.85rem',
+                    color: 'transparent',
+                    caretColor: '#e2e8f0',
+                    paddingLeft: '3.75rem',
+                    WebkitTextFillColor: 'transparent',
+                    zIndex: 1,
+                  }}
+                  spellCheck={false}
+                  placeholder=""
+                  autoComplete="off"
+                  autoCorrect="off"
+                  autoCapitalize="off"
+                />
+                {/* Placeholder shown only when empty */}
+                {!myCode && (
+                  <div className="absolute top-10 left-16 text-gray-600 font-mono text-sm pointer-events-none" style={{ lineHeight: '1.6', fontSize: '0.85rem' }}>
+                    # Write or paste your code here...
+                  </div>
+                )}
+              </div>
             )}
           </div>
 

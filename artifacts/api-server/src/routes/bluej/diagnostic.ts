@@ -1,7 +1,11 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
-import { conversations as conversationsTable, messages as messagesTable, userProgressTable } from "@workspace/db";
-import { eq, notInArray } from "drizzle-orm";
+import {
+  conversations as conversationsTable,
+  messages as messagesTable,
+  userProgressTable,
+} from "@workspace/db";
+import { eq, notInArray, inArray } from "drizzle-orm";
 import { openai } from "@workspace/integrations-openai-ai-server";
 
 const router: IRouter = Router();
@@ -29,13 +33,13 @@ router.post("/", async (req, res) => {
     let orphanedMessages = 0;
     let sessionExists = false;
 
-    // ── 1. Session check / init ────────────────────────────────────────────
-    const existing = await db
-      .select({ id: userProgressTable.id })
+    // 1. Session check / init
+    const existingProgress = await db
+      .select({ id: userProgressTable.id, conversationId: userProgressTable.conversationId })
       .from(userProgressTable)
       .where(eq(userProgressTable.sessionId, sessionId ?? ""));
 
-    sessionExists = existing.length > 0;
+    sessionExists = existingProgress.length > 0;
 
     if (!sessionExists && sessionId) {
       await db.insert(userProgressTable).values({
@@ -48,78 +52,102 @@ router.post("/", async (req, res) => {
       });
     }
 
-    // ── 2. Find + purge orphaned conversations (no messages) ───────────────
+    // 2. Scoped orphan purge — only remove conversations not referenced by ANY session
     try {
-      // All conversation IDs that have at least one message
+      // All conversation IDs referenced by any progress record (cross-session safety)
+      const allProgress = await db
+        .select({ cid: userProgressTable.conversationId })
+        .from(userProgressTable);
+
+      const referencedBySession = allProgress
+        .map((r) => r.cid)
+        .filter((id): id is number => id !== null);
+
+      // Conversations that have at least one message
       const convsWithMessages = await db
         .selectDistinct({ cid: messagesTable.conversationId })
         .from(messagesTable);
 
-      const usedIds = convsWithMessages.map((r) => r.cid);
+      const convsWithMsgIds = convsWithMessages.map((r) => r.cid);
 
-      // All conversations
+      // Safe to delete: no messages AND not referenced by any progress record
       const allConvs = await db
         .select({ id: conversationsTable.id })
         .from(conversationsTable);
 
-      const orphanIds = allConvs
+      const safeToDelete = allConvs
         .map((c) => c.id)
-        .filter((id) => !usedIds.includes(id));
+        .filter(
+          (id) =>
+            !convsWithMsgIds.includes(id) &&
+            !referencedBySession.includes(id)
+        );
 
-      orphanedConversations = orphanIds.length;
+      orphanedConversations = safeToDelete.length;
 
-      if (orphanIds.length > 0) {
-        // Delete orphaned conversations (cascade deletes any stray messages too)
+      if (safeToDelete.length > 0) {
         await db
           .delete(conversationsTable)
-          .where(notInArray(conversationsTable.id, usedIds.length > 0 ? usedIds : [-1]));
+          .where(inArray(conversationsTable.id, safeToDelete));
       }
 
-      // ── 3. Find + purge orphaned messages (no parent conversation) ─────
-      //   In normal operation these can't exist (FK + cascade), but check anyway.
-      const validConvsAfter = await db
-        .select({ id: conversationsTable.id })
-        .from(conversationsTable);
+      // 3. Duplicate message detection and removal for current session
+      // Find duplicate messages: same conversationId + role + content, keep only the first (lowest id)
+      if (existingProgress.length > 0) {
+        const sessionConvId = existingProgress[0].conversationId;
+        if (sessionConvId) {
+          const sessionMessages = await db
+            .select()
+            .from(messagesTable)
+            .where(eq(messagesTable.conversationId, sessionConvId));
 
-      const validIds = validConvsAfter.map((c) => c.id);
+          const seen = new Map<string, number>();
+          const duplicateIds: number[] = [];
 
-      if (validIds.length > 0) {
-        const strayMsgs = await db
-          .select({ id: messagesTable.id })
-          .from(messagesTable)
-          .where(notInArray(messagesTable.conversationId, validIds));
+          for (const msg of sessionMessages) {
+            const key = `${msg.role}::${msg.content.slice(0, 200)}`;
+            if (seen.has(key)) {
+              duplicateIds.push(msg.id);
+            } else {
+              seen.set(key, msg.id);
+            }
+          }
 
-        orphanedMessages = strayMsgs.length;
+          orphanedMessages = duplicateIds.length;
 
-        if (strayMsgs.length > 0) {
-          await db
-            .delete(messagesTable)
-            .where(notInArray(messagesTable.conversationId, validIds));
+          if (duplicateIds.length > 0) {
+            await db
+              .delete(messagesTable)
+              .where(inArray(messagesTable.id, duplicateIds));
+          }
         }
       }
     } catch (dbErr) {
       req.log.warn({ dbErr }, "Orphan-purge query failed — non-fatal, continuing");
     }
 
-    // ── 4. Hardware assessment ─────────────────────────────────────────────
+    // 4. Hardware assessment
     const hardwareStatus = computeHardwareStatus(cpuCores, ramGb);
 
-    // ── 5. J.'s diagnostic summary ─────────────────────────────────────────
+    // 5. J.'s diagnostic summary
     const hwDesc =
       cpuCores || ramGb
         ? `CPU: ${cpuCores ?? "?"}×cores, RAM: ${ramGb ?? "?"}GB`
-        : "hardware telemetry not available";
+        : "hardware telemetry unavailable";
+
+    const purgeReport =
+      orphanedConversations > 0 || orphanedMessages > 0
+        ? `${orphanedConversations} orphaned conversation(s) and ${orphanedMessages} duplicate message(s) found and purged.`
+        : "No orphaned or duplicate records found.";
 
     const diagPrompt = [
-      `System diagnostic clearance — report in J.'s voice (2 sentences max, under 50 words).`,
+      "System diagnostic clearance — J.'s voice, under 55 words, 2 sentences max.",
       `Hardware: ${hwDesc}. Status: ${hardwareStatus.toUpperCase()}.`,
-      orphanedConversations > 0
-        ? `${orphanedConversations} orphaned conversation record(s) and ${orphanedMessages} orphaned message(s) were found and purged from the database.`
-        : `No orphaned records found in the database.`,
+      purgeReport,
       sessionExists
-        ? "Returning operator detected — session restored."
-        : "New operator detected — fresh session initialized.",
-      `Be dry, precise, and characteristically British. End with one hardware-specific recommendation.`,
+        ? "Returning operator — session restored."
+        : "New operator — session initialized.",
+      "Be dry, precise, and British. End with one hardware-specific recommendation.",
     ].join(" ");
 
     const jResponse = await openai.chat.completions.create({

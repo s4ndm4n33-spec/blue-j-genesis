@@ -33,7 +33,7 @@ const STATUS_ICONS = {
 export function DiagnosticSequence({ onComplete }: { onComplete: () => void }) {
   const {
     sessionId,
-    setDiagnosticDone, addSystemMessage,
+    setDiagnosticDone, addSystemMessage, grantHardwarePermission,
   } = useBlueJStore();
 
   const [lines, setLines] = useState<DiagnosticLine[]>([]);
@@ -52,10 +52,12 @@ export function DiagnosticSequence({ onComplete }: { onComplete: () => void }) {
     let cancelled = false;
 
     const run = async () => {
-      // Read hardware first (auto-authorize for diagnostic)
+      // Read hardware first and persist into the store so chat context always has it
       const cores = navigator.hardwareConcurrency || null;
       // @ts-ignore
       const ram = navigator.deviceMemory || null;
+      // Populate store immediately — chat endpoint always reads from store.hardwareInfo
+      grantHardwarePermission();
 
       await new Promise(r => setTimeout(r, 300));
       if (cancelled) return;

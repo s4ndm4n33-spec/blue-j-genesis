@@ -9,7 +9,6 @@ import { CURRICULUM } from "./curriculum.js";
 
 const router: IRouter = Router();
 
-// ─── Valid learner modes ────────────────────────────────────────────────────
 const VALID_LEARNER_MODES = new Set(["kids", "teen", "adult-beginner", "advanced"]);
 type LearnerMode = "kids" | "teen" | "adult-beginner" | "advanced";
 
@@ -20,7 +19,6 @@ function parseLearnerMode(raw: unknown): LearnerMode {
   return "adult-beginner";
 }
 
-// ─── Code extraction ────────────────────────────────────────────────────────
 function extractCodeBlocks(text: string): Array<{ lang: string; code: string }> {
   const blocks: Array<{ lang: string; code: string }> = [];
   const regex = /```([\w+#.-]+)?\n([\s\S]*?)```/g;
@@ -33,7 +31,6 @@ function extractCodeBlocks(text: string): Array<{ lang: string; code: string }> 
   return blocks;
 }
 
-// ─── Language → style guide rules ──────────────────────────────────────────
 const STYLE_RULES: Record<string, string[]> = {
   python: [
     "1. snake_case for all variable and function names — no camelCase or mixedCase",
@@ -73,7 +70,6 @@ function resolveRules(lang: string): string[] {
   return STYLE_RULES.python;
 }
 
-// ─── Best-practices gauntlet ─────────────────────────────────────────────────
 interface GauntletResult {
   passed: boolean;
   violations: string[];
@@ -123,7 +119,6 @@ Respond ONLY in valid JSON (no markdown, no explanation):
   }
 }
 
-// ─── Generate J.'s full response (with gauntlet retry loop) ────────────────
 async function generateWithGauntlet(
   chatMessages: Array<{ role: "system" | "user" | "assistant"; content: string }>,
   language: string,
@@ -183,7 +178,6 @@ async function generateWithGauntlet(
   return finalResp.choices[0]?.message?.content ?? "";
 }
 
-// ─── Route handler ──────────────────────────────────────────────────────────
 router.post("/", async (req, res) => {
   try {
     const body = ChatWithJBody.parse(req.body);
@@ -255,7 +249,7 @@ router.post("/", async (req, res) => {
       { role: "user" as const, content: message },
     ];
 
-    // ── Gauntlet pipeline: generate → check → fix (before sending to client) ──
+    //
     const fullResponse = await generateWithGauntlet(chatMessages, language);
 
     await db.insert(messagesTable).values({
@@ -269,7 +263,7 @@ router.post("/", async (req, res) => {
       .set({ conversationId, selectedLanguage: language, selectedOs: os, updatedAt: new Date() })
       .where(eq(userProgressTable.sessionId, sessionId));
 
-    // ── Stream the validated response to the client ───────────────────────────
+    //
     res.setHeader("Content-Type", "text/event-stream");
     res.setHeader("Cache-Control", "no-cache");
     res.setHeader("Connection", "keep-alive");
