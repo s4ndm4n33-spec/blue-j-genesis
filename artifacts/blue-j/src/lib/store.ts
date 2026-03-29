@@ -5,6 +5,26 @@ import { v4 as uuidv4 } from 'uuid';
 export type OperatingSystem = 'windows' | 'macos' | 'linux' | 'android' | 'ios';
 export type ProgrammingLanguage = 'python' | 'cpp' | 'javascript';
 export type LearnerMode = 'kids' | 'teen' | 'adult-beginner' | 'advanced';
+export type SimHardwareProfile = 'auto' | 'high-end' | 'mid-range' | 'budget-laptop' | 'raspberry-pi' | 'cloud-gpu';
+
+export interface SimProfile {
+  id: SimHardwareProfile;
+  label: string;
+  shortLabel: string;
+  cores: number | null;
+  ramGb: number | null;
+  gpu: string | null;
+  desc: string;
+}
+
+export const SIM_PROFILES: SimProfile[] = [
+  { id: 'auto',          label: 'Auto-detect (My Specs)',    shortLabel: 'AUTO',  cores: null, ramGb: null, gpu: null,           desc: 'Uses your detected hardware specs' },
+  { id: 'high-end',      label: 'High-End Workstation',      shortLabel: 'BEAST', cores: 32,   ramGb: 64,   gpu: null,           desc: '32-core CPU, 64GB RAM' },
+  { id: 'mid-range',     label: 'Mid-Range PC',              shortLabel: 'MID',   cores: 8,    ramGb: 16,   gpu: null,           desc: '8-core CPU, 16GB RAM' },
+  { id: 'budget-laptop', label: 'Budget Laptop',             shortLabel: 'LITE',  cores: 4,    ramGb: 8,    gpu: null,           desc: '4-core CPU, 8GB RAM' },
+  { id: 'raspberry-pi',  label: 'Raspberry Pi 4',            shortLabel: 'PI',    cores: 4,    ramGb: 4,    gpu: null,           desc: '4-core ARM64, 4GB RAM' },
+  { id: 'cloud-gpu',     label: 'Cloud GPU (NVIDIA T4)',     shortLabel: 'GPU',   cores: 8,    ramGb: 16,   gpu: 'NVIDIA T4 16GB VRAM', desc: '8-core CPU, 16GB RAM, NVIDIA T4' },
+];
 
 export interface ChatMessage {
   id: string;
@@ -39,11 +59,13 @@ interface BlueJState {
   myCode: string;
   learnerMode: LearnerMode;
   diagnosticDone: boolean;
+  simHardwareProfile: SimHardwareProfile;
   messages: ChatMessage[];
   isTyping: boolean;
 
   // Actions
   setConversationId: (id: number | null) => void;
+  setSimHardwareProfile: (p: SimHardwareProfile) => void;
   setSelectedLanguage: (lang: ProgrammingLanguage) => void;
   setSelectedOs: (os: OperatingSystem) => void;
   setHardwareMonitorEnabled: (enabled: boolean) => void;
@@ -84,6 +106,7 @@ export const useBlueJStore = create<BlueJState>()(
       myCode: "# Your code goes here...\n\nprint('Hello, J.')",
       learnerMode: 'adult-beginner',
       diagnosticDone: false,
+      simHardwareProfile: 'auto',
       messages: [{
         id: 'welcome',
         role: 'assistant' as const,
@@ -93,6 +116,7 @@ export const useBlueJStore = create<BlueJState>()(
       isTyping: false,
 
       setConversationId: (id) => set({ conversationId: id }),
+      setSimHardwareProfile: (p) => set({ simHardwareProfile: p }),
       setSelectedLanguage: (lang) => set({ selectedLanguage: lang }),
       setSelectedOs: (os) => set({ selectedOs: os }),
       setHardwareMonitorEnabled: (enabled) => set({ hardwareMonitorEnabled: enabled }),
@@ -163,6 +187,7 @@ export const useBlueJStore = create<BlueJState>()(
         hardwarePermissionGranted: state.hardwarePermissionGranted,
         myCode: state.myCode,
         learnerMode: state.learnerMode,
+        simHardwareProfile: state.simHardwareProfile,
       })
     }
   )

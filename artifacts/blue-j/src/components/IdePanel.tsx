@@ -1,33 +1,27 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
-import { useBlueJStore } from '@/lib/store';
+import { useBlueJStore, SIM_PROFILES, type SimHardwareProfile } from '@/lib/store';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import {
   Code2, Copy, Play, Check, Download, Zap, ChevronDown, ChevronUp,
-  Terminal as TerminalIcon, Loader2, X
+  Terminal as TerminalIcon, Loader2, X, Cpu, ChevronRight, Activity
 } from 'lucide-react';
 import { useChatStream } from '@/hooks/use-chat';
 import { DownloadModal } from './DownloadModal';
 import { motion, AnimatePresence } from 'framer-motion';
 
 const LANG_MAP: Record<string, string> = {
-  python: 'python',
-  py: 'python',
-  javascript: 'javascript',
-  js: 'javascript',
-  typescript: 'typescript',
-  ts: 'typescript',
-  cpp: 'cpp',
-  'c++': 'cpp',
-  c: 'c',
+  python: 'python', py: 'python',
+  javascript: 'javascript', js: 'javascript',
+  typescript: 'typescript', ts: 'typescript',
+  cpp: 'cpp', 'c++': 'cpp', c: 'c',
 };
 
 function extractCodeBlock(content: string): { code: string; lang: string } {
   const match = content.match(/```(\w+)?\n([\s\S]*?)```/);
   if (match) {
     const rawLang = (match[1] ?? 'python').toLowerCase();
-    const lang = LANG_MAP[rawLang] ?? rawLang;
-    return { code: match[2].trim(), lang };
+    return { code: match[2].trim(), lang: LANG_MAP[rawLang] ?? rawLang };
   }
   return { code: '# Awaiting code synthesis from J...', lang: 'python' };
 }
@@ -36,15 +30,28 @@ interface SimulationResult {
   output: string;
   simulatedAt: string;
   error?: string;
+  profile?: {
+    id: string;
+    label: string;
+    cores: number | null;
+    ramGb: number | null;
+    gpu: string | null;
+  };
 }
 
 export function IdePanel() {
-  const { selectedLanguage, selectedOs, myCode, setMyCode } = useBlueJStore();
+  const {
+    selectedLanguage, selectedOs, myCode, setMyCode,
+    simHardwareProfile, setSimHardwareProfile,
+    hardwareInfo,
+  } = useBlueJStore();
   const { messages, addSystemMessage } = useChatStream();
+
   const [activeTab, setActiveTab] = useState<'j_code' | 'my_code'>('j_code');
   const [copied, setCopied] = useState(false);
   const [showDownload, setShowDownload] = useState(false);
   const [showTerminal, setShowTerminal] = useState(false);
+  const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [simulating, setSimulating] = useState(false);
   const [optimizing, setOptimizing] = useState(false);
   const [simResult, setSimResult] = useState<SimulationResult | null>(null);
@@ -67,9 +74,15 @@ export function IdePanel() {
     }
   }, [simResult, showTerminal]);
 
+  const currentProfile = SIM_PROFILES.find(p => p.id === simHardwareProfile) ?? SIM_PROFILES[0];
+
+  // Resolve "auto" to actual detected hardware
+  const resolvedCores = simHardwareProfile === 'auto' ? hardwareInfo.cpuCores : currentProfile.cores;
+  const resolvedRam   = simHardwareProfile === 'auto' ? hardwareInfo.ramGb   : currentProfile.ramGb;
+  const resolvedGpu   = simHardwareProfile === 'auto' ? null                 : currentProfile.gpu;
+
   const handleCopy = () => {
-    const codeToCopy = activeTab === 'j_code' ? jCode : myCode;
-    navigator.clipboard.writeText(codeToCopy);
+    navigator.clipboard.writeText(activeTab === 'j_code' ? jCode : myCode);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -77,7 +90,6 @@ export function IdePanel() {
   const handleSimulate = async () => {
     const codeToRun = activeTab === 'j_code' ? jCode : myCode;
     const lang = activeTab === 'j_code' ? jLang : selectedLanguage;
-
     if (!codeToRun.trim() || codeToRun.includes('Awaiting code')) return;
 
     setSimulating(true);
@@ -88,35 +100,39 @@ export function IdePanel() {
       const resp = await fetch(`/api/bluej/simulate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code: codeToRun, language: lang, os: selectedOs }),
+        body: JSON.stringify({
+          code: codeToRun,
+          language: lang,
+          os: selectedOs,
+          simProfileId: simHardwareProfile,
+          simCores: resolvedCores,
+          simRamGb: resolvedRam,
+          simGpu: resolvedGpu,
+        }),
       });
       const data = await resp.json() as SimulationResult;
       setSimResult(data);
     } catch (err) {
-      setSimResult({ output: '[Connection error — simulation unavailable]', simulatedAt: new Date().toISOString(), error: String(err) });
+      setSimResult({ output: '[Connection error — simulation unavailable]', simulatedAt: new Date().toISOString() });
     } finally {
       setSimulating(false);
     }
   };
 
   const handleOptimize = async () => {
-    if (!myCode.trim() || myCode.includes('Hello, J.')) return;
+    if (!myCode.trim()) return;
     setOptimizing(true);
-
     try {
       const resp = await fetch(`/api/bluej/optimize`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ code: myCode, language: selectedLanguage, os: selectedOs }),
       });
-      const data = await resp.json() as { optimizedCode: string; explanation: string; language: string };
-
+      const data = await resp.json() as { optimizedCode: string; explanation: string };
       if (data.optimizedCode) {
         setMyCode(data.optimizedCode);
         setActiveTab('my_code');
-        if (addSystemMessage) {
-          addSystemMessage(`**J. on your optimization:** ${data.explanation}`);
-        }
+        addSystemMessage?.(`**J. on your optimization:** ${data.explanation}`);
       }
     } catch (err) {
       console.error('Optimize error:', err);
@@ -129,10 +145,7 @@ export function IdePanel() {
   const { terminalOutput, jComment } = useMemo(() => {
     if (!simResult?.output) return { terminalOutput: '', jComment: '' };
     const parts = simResult.output.split(/\n---\n?/);
-    return {
-      terminalOutput: parts[0]?.trim() ?? '',
-      jComment: parts[1]?.trim() ?? '',
-    };
+    return { terminalOutput: parts[0]?.trim() ?? '', jComment: parts[1]?.trim() ?? '' };
   }, [simResult]);
 
   const currentLang = activeTab === 'j_code' ? jLang : selectedLanguage;
@@ -140,7 +153,7 @@ export function IdePanel() {
   return (
     <>
       <div className="h-full flex flex-col hud-panel overflow-hidden">
-        {/* Header Tabs */}
+        {/* Tab Header */}
         <div className="flex border-b border-primary/20 bg-secondary/50 flex-shrink-0">
           <button
             onClick={() => setActiveTab('j_code')}
@@ -175,7 +188,7 @@ export function IdePanel() {
           {/* Editor */}
           <div className="flex-1 overflow-auto">
             {activeTab === 'j_code' ? (
-              <div className="p-4 pt-10 text-sm font-mono h-full">
+              <div className="p-4 pt-10 h-full">
                 <SyntaxHighlighter
                   language={jLang}
                   style={vscDarkPlus}
@@ -203,42 +216,57 @@ export function IdePanel() {
             {showTerminal && (
               <motion.div
                 initial={{ height: 0 }}
-                animate={{ height: '40%' }}
+                animate={{ height: '42%' }}
                 exit={{ height: 0 }}
-                className="border-t border-primary/30 bg-black flex flex-col overflow-hidden"
+                className="border-t border-primary/30 bg-[#0d0d0d] flex flex-col overflow-hidden"
               >
                 {/* Terminal Header */}
                 <div className="flex items-center justify-between px-3 py-1.5 border-b border-primary/20 bg-black/80 flex-shrink-0">
                   <div className="flex items-center gap-2 text-xs font-hud text-primary/70 uppercase tracking-widest">
                     <TerminalIcon className="w-3.5 h-3.5" />
-                    <span>Execution Simulation</span>
+                    <span>J. Simulation Engine</span>
                     {simulating && <Loader2 className="w-3 h-3 animate-spin text-accent" />}
                   </div>
-                  <button
-                    onClick={() => setShowTerminal(false)}
-                    className="text-primary/40 hover:text-primary transition-colors p-0.5"
-                  >
-                    <X className="w-3.5 h-3.5" />
-                  </button>
+                  {/* Simulation Mode Badge */}
+                  <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1.5 bg-green-900/30 border border-green-500/30 text-green-400 text-[0.65rem] font-hud px-2 py-0.5 rounded uppercase tracking-wider">
+                      <Activity className="w-2.5 h-2.5" />
+                      <span>AI SIM — No Local Runtime Required</span>
+                    </div>
+                    <button
+                      onClick={() => setShowTerminal(false)}
+                      className="text-primary/40 hover:text-primary transition-colors p-0.5"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
                 </div>
 
+                {/* Profile info bar (shown after sim runs) */}
+                {simResult?.profile && (
+                  <div className="px-3 py-1 bg-primary/5 border-b border-primary/10 text-[0.68rem] font-mono text-primary/50 flex items-center gap-2 flex-shrink-0 flex-wrap">
+                    <Cpu className="w-3 h-3 flex-shrink-0" />
+                    <span>Target: <span className="text-primary/80">{simResult.profile.label}</span></span>
+                    {simResult.profile.cores && <span>· {simResult.profile.cores}-core CPU</span>}
+                    {simResult.profile.ramGb  && <span>· {simResult.profile.ramGb}GB RAM</span>}
+                    {simResult.profile.gpu    && <span>· {simResult.profile.gpu}</span>}
+                  </div>
+                )}
+
                 {/* Terminal Output */}
-                <div
-                  ref={terminalRef}
-                  className="flex-1 overflow-auto p-3 font-mono text-xs leading-relaxed"
-                >
+                <div ref={terminalRef} className="flex-1 overflow-auto p-3 font-mono text-xs leading-relaxed">
                   {simulating && (
                     <div className="text-green-500/70 animate-pulse">
-                      {'>'} Running simulation...
+                      {'>'} Running simulation on {currentProfile.label}...
                     </div>
                   )}
                   {simResult && !simulating && (
                     <>
-                      <div className="text-green-400/60 mb-2 text-[0.7rem]">
-                        {'>'} {new Date(simResult.simulatedAt).toLocaleTimeString()} — predicted output:
+                      <div className="text-green-400/50 mb-2 text-[0.68rem]">
+                        {'>'} {new Date(simResult.simulatedAt).toLocaleTimeString()} — simulated output:
                       </div>
                       {terminalOutput ? (
-                        <pre className="text-green-300 whitespace-pre-wrap break-words">{terminalOutput}</pre>
+                        <pre className="text-green-300 whitespace-pre-wrap break-words leading-relaxed">{terminalOutput}</pre>
                       ) : (
                         <span className="text-primary/40 italic">(no output)</span>
                       )}
@@ -250,7 +278,11 @@ export function IdePanel() {
                     </>
                   )}
                   {!simulating && !simResult && (
-                    <span className="text-primary/30 italic">No simulation run yet.</span>
+                    <div className="text-primary/30 italic space-y-1">
+                      <p>No simulation run yet.</p>
+                      <p className="text-[0.7rem]">Select a hardware profile below, then click "Simulate Execution."</p>
+                      <p className="text-[0.7rem]">No Python, Node.js, or C++ compiler needed — J. handles all execution.</p>
+                    </div>
                   )}
                 </div>
               </motion.div>
@@ -260,7 +292,7 @@ export function IdePanel() {
 
         {/* Bottom Toolbar */}
         <div className="p-2 border-t border-primary/20 bg-secondary/50 flex items-center justify-between gap-2 flex-shrink-0 flex-wrap">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             {/* Download */}
             <button
               onClick={() => setShowDownload(true)}
@@ -292,31 +324,90 @@ export function IdePanel() {
                   ? 'border-green-500/50 bg-green-500/10 text-green-400'
                   : 'border-primary/20 text-primary/50 hover:text-primary/80'
               }`}
-              title="Toggle terminal panel"
+              title="Toggle terminal"
             >
               <TerminalIcon className="w-3.5 h-3.5" />
               <span className="hidden sm:inline">Terminal</span>
               {showTerminal ? <ChevronDown className="w-3 h-3" /> : <ChevronUp className="w-3 h-3" />}
             </button>
+
+            {/* Hardware Profile Selector */}
+            <div className="relative">
+              <button
+                onClick={() => setShowProfileMenu(v => !v)}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 border border-primary/30 bg-primary/5 hover:bg-primary/10 text-primary/70 hover:text-primary rounded-sm transition-all text-xs font-hud uppercase tracking-wider"
+                title="Select simulation hardware profile"
+              >
+                <Cpu className="w-3.5 h-3.5 flex-shrink-0" />
+                <span className="hidden sm:inline">{currentProfile.shortLabel}</span>
+                <ChevronDown className="w-3 h-3" />
+              </button>
+
+              <AnimatePresence>
+                {showProfileMenu && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: 4 }}
+                    className="absolute bottom-full mb-1 left-0 z-50 bg-background border border-primary/30 rounded-sm min-w-[260px] shadow-xl shadow-black/60"
+                  >
+                    {/* Header */}
+                    <div className="px-3 py-2 border-b border-primary/20 text-[0.65rem] font-hud text-primary/50 uppercase tracking-widest flex items-center gap-2">
+                      <Activity className="w-3 h-3" />
+                      <span>Simulation Hardware Profile</span>
+                    </div>
+
+                    {/* No local runtime disclaimer */}
+                    <div className="px-3 py-2 bg-green-900/20 border-b border-green-500/20">
+                      <p className="text-[0.65rem] text-green-400/80 font-mono leading-relaxed">
+                        ✓ AI Simulation Mode — no Python, Node.js, or compiler installation required.
+                        J. predicts exact output for each hardware target.
+                      </p>
+                    </div>
+
+                    {/* Profile Options */}
+                    {SIM_PROFILES.map(profile => (
+                      <button
+                        key={profile.id}
+                        onClick={() => { setSimHardwareProfile(profile.id); setShowProfileMenu(false); setSimResult(null); }}
+                        className={`w-full text-left px-3 py-2.5 flex items-start gap-3 hover:bg-primary/10 transition-colors border-b border-primary/10 last:border-0 ${
+                          simHardwareProfile === profile.id ? 'bg-primary/10' : ''
+                        }`}
+                      >
+                        <ChevronRight className={`w-3 h-3 mt-0.5 flex-shrink-0 transition-opacity ${simHardwareProfile === profile.id ? 'text-primary opacity-100' : 'opacity-0'}`} />
+                        <div>
+                          <div className={`text-xs font-hud uppercase tracking-wider ${simHardwareProfile === profile.id ? 'text-primary' : 'text-primary/70'}`}>
+                            {profile.label}
+                          </div>
+                          <div className="text-[0.65rem] text-primary/40 font-mono mt-0.5">{profile.desc}</div>
+                        </div>
+                      </button>
+                    ))}
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
           </div>
 
-          {/* Simulate Execution */}
+          {/* Simulate Button */}
           <button
             onClick={handleSimulate}
             disabled={simulating}
             className="flex items-center gap-2 px-4 py-2 bg-primary/20 hover:bg-primary/40 border border-primary/50 text-primary rounded-sm transition-all text-sm font-hud uppercase tracking-wider glow-border disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {simulating ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : (
-              <Play className="w-4 h-4" />
-            )}
-            <span>{simulating ? 'Simulating...' : 'Simulate Execution'}</span>
+            {simulating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
+            <span className="hidden sm:inline">{simulating ? 'Simulating...' : 'Simulate Execution'}</span>
+            <span className="sm:hidden">{simulating ? '...' : 'Run'}</span>
           </button>
         </div>
       </div>
 
       {showDownload && <DownloadModal onClose={() => setShowDownload(false)} />}
+
+      {/* Close profile menu on outside click */}
+      {showProfileMenu && (
+        <div className="fixed inset-0 z-40" onClick={() => setShowProfileMenu(false)} />
+      )}
     </>
   );
 }
