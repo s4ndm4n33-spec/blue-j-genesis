@@ -56,6 +56,7 @@ export function useChatStream() {
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let assistantContent = "";
+      let sseBuffer = "";
 
       const assistantMsgId = `a-${Date.now()}`;
 
@@ -70,11 +71,15 @@ export function useChatStream() {
         const { done, value } = await reader.read();
         if (done) break;
 
-        const chunk = decoder.decode(value);
-        const lines = chunk.split('\n').filter(l => l.trim().startsWith('data: '));
+        sseBuffer += decoder.decode(value, { stream: true });
+        const lines = sseBuffer.split('\n');
+        // Keep the last (potentially incomplete) line in the buffer
+        sseBuffer = lines.pop() ?? "";
 
         for (const line of lines) {
-          const dataStr = line.replace('data: ', '').trim();
+          const trimmed = line.trim();
+          if (!trimmed.startsWith('data: ')) continue;
+          const dataStr = trimmed.slice(6).trim();
           if (dataStr === '[DONE]') continue;
           try {
             const data = JSON.parse(dataStr);
@@ -86,7 +91,7 @@ export function useChatStream() {
               setConversationId(data.conversationId);
             }
           } catch {
-            // Incomplete SSE chunk — skip
+            // Partial JSON carried over — will complete in next read
           }
         }
       }
