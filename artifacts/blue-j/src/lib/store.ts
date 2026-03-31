@@ -34,6 +34,15 @@ export interface ChatMessage {
   voiceInput?: boolean;
 }
 
+export interface PortfolioEntry {
+  id: string;
+  name: string;
+  language: ProgrammingLanguage;
+  code: string;
+  timestamp: number;
+  notes?: string;
+}
+
 export const LEARNER_MODES: { id: LearnerMode; label: string; shortLabel: string }[] = [
   { id: 'kids', label: 'Kids (8–12)', shortLabel: 'KIDS' },
   { id: 'teen', label: 'Teen (13–17)', shortLabel: 'TEEN' },
@@ -62,6 +71,7 @@ interface BlueJState {
   simHardwareProfile: SimHardwareProfile;
   messages: ChatMessage[];
   isTyping: boolean;
+  portfolio: PortfolioEntry[];
 
   // Actions
   setConversationId: (id: number | null) => void;
@@ -81,6 +91,9 @@ interface BlueJState {
   updateLastAssistantMessage: (id: string, content: string) => void;
   setIsTyping: (v: boolean) => void;
   addSystemMessage: (content: string) => void;
+  saveToPortfolio: (name: string, notes?: string) => void;
+  loadFromPortfolio: (id: string) => void;
+  deleteFromPortfolio: (id: string) => void;
 }
 
 function detectOS(): OperatingSystem {
@@ -114,6 +127,7 @@ export const useBlueJStore = create<BlueJState>()(
         timestamp: Date.now()
       }],
       isTyping: false,
+      portfolio: [],
 
       setConversationId: (id) => set({ conversationId: id }),
       setSimHardwareProfile: (p) => set({ simHardwareProfile: p }),
@@ -174,7 +188,31 @@ export const useBlueJStore = create<BlueJState>()(
         if (!get().selectedOs || get().selectedOs === 'linux') {
           set({ selectedOs: os });
         }
-      }
+      },
+
+      saveToPortfolio: (name, notes) => {
+        const { myCode, selectedLanguage, portfolio } = get();
+        const entry: PortfolioEntry = {
+          id: uuidv4(),
+          name: name.trim() || `${selectedLanguage} project`,
+          language: selectedLanguage,
+          code: myCode,
+          timestamp: Date.now(),
+          notes: notes?.trim() || undefined,
+        };
+        set({ portfolio: [entry, ...portfolio].slice(0, 50) }); // cap at 50 entries
+      },
+
+      loadFromPortfolio: (id) => {
+        const entry = get().portfolio.find(e => e.id === id);
+        if (entry) {
+          set({ myCode: entry.code, selectedLanguage: entry.language, activeTab: 'ide' });
+        }
+      },
+
+      deleteFromPortfolio: (id) => {
+        set(s => ({ portfolio: s.portfolio.filter(e => e.id !== id) }));
+      },
     }),
     {
       name: 'bluej-storage',
@@ -188,6 +226,7 @@ export const useBlueJStore = create<BlueJState>()(
         myCode: state.myCode,
         learnerMode: state.learnerMode,
         simHardwareProfile: state.simHardwareProfile,
+        portfolio: state.portfolio,
       })
     }
   )
