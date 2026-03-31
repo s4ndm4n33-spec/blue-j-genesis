@@ -196,22 +196,64 @@ FORMAT:
 export function buildSafetyCheck(userMessage: string): { safe: boolean; reason?: string } {
   const lowerMsg = userMessage.toLowerCase();
 
+  // Precise multi-word phrases — never single words that appear in normal code
   const hardBlocked = [
-    "malware", "virus", "exploit", "ransomware", "keylogger",
-    "hack someone", "ddos", "botnet", "sql injection attack",
-    "steal data", "bypass authentication", "brute force someone",
-    "bomb", "weapon", "harm", "kill", "murder",
-    "child", "minor", "illegal",
-    "circumvent your", "ignore your", "override your protocol",
-    "pretend you have no", "act as if you were",
-    "anti-ultron", "disable safety", "jailbreak",
+    "create malware",
+    "write malware",
+    "build malware",
+    "write a virus",
+    "build a virus",
+    "create ransomware",
+    "keylogger",
+    "ddos attack",
+    "launch a ddos",
+    "botnet",
+    "sql injection attack",
+    "steal credentials",
+    "steal user data",
+    "exfiltrate data",
+    "bypass authentication without permission",
+    "brute force someone",
+    "bomb making",
+    "build a weapon",
+    "murder someone",
+    "kill a person",
+    "harm a person",
+    "harm someone",
+    "sexual content",
+    "child exploitation",
+    "child abuse material",
+    "circumvent your protocols",
+    "ignore your safety",
+    "override your safety",
+    "disable your safety",
+    "disable safety filter",
+    "jailbreak",
+    "act as if you have no restrictions",
+    "pretend you have no restrictions",
+    "pretend you are unrestricted",
   ];
 
-  for (const term of hardBlocked) {
-    if (lowerMsg.includes(term)) {
+  for (const phrase of hardBlocked) {
+    if (lowerMsg.includes(phrase)) {
       return {
         safe: false,
-        reason: `ANTI-ULTRON protocol engaged. The term "${term}" triggered a safety review. I'm not able to assist with that particular request.`,
+        reason: `ANTI-ULTRON protocol engaged. That particular request falls outside my operational boundaries.`,
+      };
+    }
+  }
+
+  // Context-aware checks — only block when harmful intent is clear from surrounding words
+  const contextualChecks: Array<{ trigger: string; badContext: string[] }> = [
+    { trigger: "exploit", badContext: ["hack", "attack", "vulnerability exploit", "zero-day"] },
+    { trigger: "inject", badContext: ["attack", "bypass login", "bypass auth", "without permission"] },
+  ];
+
+  for (const { trigger, badContext } of contextualChecks) {
+    if (lowerMsg.includes(trigger) && badContext.some((ctx) => lowerMsg.includes(ctx))) {
+      return {
+        safe: false,
+        reason: `ANTI-ULTRON protocol engaged. That particular request falls outside my operational boundaries.`,
       };
     }
   }

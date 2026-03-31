@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { useChatStream } from '@/hooks/use-chat';
 import { DownloadModal } from './DownloadModal';
+import { Tooltip } from './Tooltip';
 import { motion, AnimatePresence } from 'framer-motion';
 
 const LANG_MAP: Record<string, string> = {
@@ -59,6 +60,7 @@ export function IdePanel() {
   const highlightLayerRef = useRef<HTMLDivElement>(null);
   const myCodeTextareaRef = useRef<HTMLTextAreaElement>(null);
 
+  // Keep the highlight layer scroll in sync with the textarea
   const syncHighlightScroll = () => {
     if (highlightLayerRef.current && myCodeTextareaRef.current) {
       highlightLayerRef.current.scrollTop = myCodeTextareaRef.current.scrollTop;
@@ -85,7 +87,6 @@ export function IdePanel() {
 
   const currentProfile = SIM_PROFILES.find(p => p.id === simHardwareProfile) ?? SIM_PROFILES[0];
 
-  // Resolve "auto" to actual detected hardware
   const resolvedCores = simHardwareProfile === 'auto' ? hardwareInfo.cpuCores : currentProfile.cores;
   const resolvedRam   = simHardwareProfile === 'auto' ? hardwareInfo.ramGb   : currentProfile.ramGb;
   const resolvedGpu   = simHardwareProfile === 'auto' ? null                 : currentProfile.gpu;
@@ -141,7 +142,7 @@ export function IdePanel() {
       if (data.optimizedCode) {
         setMyCode(data.optimizedCode);
         setActiveTab('my_code');
-        addSystemMessage?.(`**J. on your optimization:** ${data.explanation}`);
+        addSystemMessage?.(`**Five Masters Optimization complete.** ${data.explanation}`);
       }
     } catch (err) {
       console.error('Optimize error:', err);
@@ -150,7 +151,6 @@ export function IdePanel() {
     }
   };
 
-  // Parse J.'s terminal comment (after ---)
   const { terminalOutput, jComment } = useMemo(() => {
     if (!simResult?.output) return { terminalOutput: '', jComment: '' };
     const parts = simResult.output.split(/\n---\n?/);
@@ -158,6 +158,11 @@ export function IdePanel() {
   }, [simResult]);
 
   const currentLang = activeTab === 'j_code' ? jLang : selectedLanguage;
+
+  // Shared font/line-height constants — must match exactly between textarea and highlight layer
+  const EDITOR_FONT_SIZE = '0.85rem';
+  const EDITOR_LINE_HEIGHT = '1.6';
+  const EDITOR_PADDING = '1rem'; // p-4 = 16px
 
   return (
     <>
@@ -185,13 +190,14 @@ export function IdePanel() {
             <div className="bg-black/60 text-primary/70 text-xs px-2 py-1 rounded border border-primary/20 font-mono uppercase">
               {currentLang}
             </div>
-            <button
-              onClick={handleCopy}
-              className="bg-black/60 hover:bg-primary/20 text-primary p-1.5 rounded border border-primary/20 transition-colors"
-              title="Copy code"
-            >
-              {copied ? <Check className="w-4 h-4 text-green-400" /> : <Copy className="w-4 h-4" />}
-            </button>
+            <Tooltip content="Copy code to clipboard" position="bottom">
+              <button
+                onClick={handleCopy}
+                className="bg-black/60 hover:bg-primary/20 text-primary p-1.5 rounded border border-primary/20 transition-colors"
+              >
+                {copied ? <Check className="w-4 h-4 text-green-400" /> : <Copy className="w-4 h-4" />}
+              </button>
+            </Tooltip>
           </div>
 
           {/* Editor */}
@@ -201,7 +207,7 @@ export function IdePanel() {
                 <SyntaxHighlighter
                   language={jLang}
                   style={vscDarkPlus}
-                  customStyle={{ margin: 0, padding: 0, background: 'transparent', fontSize: '0.85rem', lineHeight: '1.6' }}
+                  customStyle={{ margin: 0, padding: 0, background: 'transparent', fontSize: EDITOR_FONT_SIZE, lineHeight: EDITOR_LINE_HEIGHT }}
                   showLineNumbers
                   lineNumberStyle={{ color: '#4a5568', minWidth: '2.5em' }}
                 >
@@ -210,12 +216,21 @@ export function IdePanel() {
               </div>
             ) : (
               <div className="relative w-full h-full" style={{ minHeight: '200px' }}>
-                {/* Syntax-highlighted layer — scroll-synced to textarea via ref */}
+                {/*
+                  Syntax-highlight layer — sits behind the textarea.
+                  CRITICAL: No showLineNumbers here. Line numbers add extra width
+                  that the textarea can't match, causing cursor misalignment.
+                  Both layers use the exact same padding, font-size, and line-height.
+                */}
                 <div
                   ref={highlightLayerRef}
-                  className="absolute inset-0 p-4 pt-10 pointer-events-none overflow-hidden"
+                  className="absolute inset-0 pointer-events-none overflow-hidden"
                   aria-hidden="true"
-                  style={{ overflowY: 'hidden', overflowX: 'hidden' }}
+                  style={{
+                    padding: EDITOR_PADDING,
+                    overflowY: 'hidden',
+                    overflowX: 'hidden',
+                  }}
                 >
                   <SyntaxHighlighter
                     language={LANG_MAP[selectedLanguage] ?? selectedLanguage}
@@ -224,31 +239,31 @@ export function IdePanel() {
                       margin: 0,
                       padding: 0,
                       background: 'transparent',
-                      fontSize: '0.85rem',
-                      lineHeight: '1.6',
+                      fontSize: EDITOR_FONT_SIZE,
+                      lineHeight: EDITOR_LINE_HEIGHT,
                       whiteSpace: 'pre',
                       overflow: 'visible',
                     }}
-                    showLineNumbers
-                    lineNumberStyle={{ color: '#4a5568', minWidth: '2.5em' }}
+                    showLineNumbers={false}
                     wrapLongLines={false}
                   >
                     {myCode || ' '}
                   </SyntaxHighlighter>
                 </div>
-                {/* Transparent textarea — captures input; scroll drives the highlight layer */}
+
+                {/* Transparent textarea — captures all input; scrolling drives the highlight layer */}
                 <textarea
                   ref={myCodeTextareaRef}
                   value={myCode}
                   onChange={(e) => setMyCode(e.target.value)}
                   onScroll={syncHighlightScroll}
-                  className="absolute inset-0 w-full h-full p-4 pt-10 bg-transparent font-mono focus:outline-none resize-none overflow-auto"
+                  className="absolute inset-0 w-full h-full bg-transparent font-mono focus:outline-none resize-none overflow-auto"
                   style={{
-                    lineHeight: '1.6',
-                    fontSize: '0.85rem',
+                    padding: EDITOR_PADDING,
+                    lineHeight: EDITOR_LINE_HEIGHT,
+                    fontSize: EDITOR_FONT_SIZE,
                     color: 'transparent',
                     caretColor: '#e2e8f0',
-                    paddingLeft: '3.75rem',
                     WebkitTextFillColor: 'transparent',
                     zIndex: 1,
                   }}
@@ -258,7 +273,10 @@ export function IdePanel() {
                   autoCapitalize="off"
                 />
                 {!myCode && (
-                  <div className="absolute top-10 left-16 text-gray-600 font-mono text-sm pointer-events-none" style={{ lineHeight: '1.6', fontSize: '0.85rem' }}>
+                  <div
+                    className="absolute top-0 left-0 text-gray-600 font-mono pointer-events-none"
+                    style={{ padding: EDITOR_PADDING, lineHeight: EDITOR_LINE_HEIGHT, fontSize: EDITOR_FONT_SIZE }}
+                  >
                     # Write or paste your code here...
                   </div>
                 )}
@@ -282,7 +300,6 @@ export function IdePanel() {
                     <span>J. Simulation Engine</span>
                     {simulating && <Loader2 className="w-3 h-3 animate-spin text-accent" />}
                   </div>
-                  {/* Simulation Mode Badge */}
                   <div className="flex items-center gap-2">
                     <div className="flex items-center gap-1.5 bg-green-900/30 border border-green-500/30 text-green-400 text-[0.65rem] font-hud px-2 py-0.5 rounded uppercase tracking-wider">
                       <Activity className="w-2.5 h-2.5" />
@@ -297,7 +314,7 @@ export function IdePanel() {
                   </div>
                 </div>
 
-                {/* Profile info bar (shown after sim runs) */}
+                {/* Profile info bar */}
                 {simResult?.profile && (
                   <div className="px-3 py-1 bg-primary/5 border-b border-primary/10 text-[0.68rem] font-mono text-primary/50 flex items-center gap-2 flex-shrink-0 flex-wrap">
                     <Cpu className="w-3 h-3 flex-shrink-0" />
@@ -348,55 +365,60 @@ export function IdePanel() {
         {/* Bottom Toolbar */}
         <div className="p-2 border-t border-primary/20 bg-secondary/50 flex items-center justify-between gap-2 flex-shrink-0 flex-wrap">
           <div className="flex items-center gap-2 flex-wrap">
+
             {/* Download */}
-            <button
-              onClick={() => setShowDownload(true)}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 bg-accent/10 hover:bg-accent/20 border border-accent/40 text-accent rounded-sm transition-all text-xs font-hud uppercase tracking-wider"
-              title="Download offline package"
-            >
-              <Download className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Export</span>
-            </button>
+            <Tooltip content="Export code + offline setup package for your hardware" position="top">
+              <button
+                onClick={() => setShowDownload(true)}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 bg-accent/10 hover:bg-accent/20 border border-accent/40 text-accent rounded-sm transition-all text-xs font-hud uppercase tracking-wider"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Export</span>
+              </button>
+            </Tooltip>
 
             {/* Optimize (My Workspace only) */}
             {activeTab === 'my_code' && (
-              <button
-                onClick={handleOptimize}
-                disabled={optimizing || !myCode.trim()}
-                title="Ask J. to optimize your code for memory & performance"
-                className="flex items-center gap-1.5 px-2.5 py-1.5 bg-yellow-500/10 hover:bg-yellow-500/20 border border-yellow-500/40 text-yellow-400 rounded-sm transition-all text-xs font-hud uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {optimizing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5" />}
-                <span className="hidden sm:inline">{optimizing ? 'Optimizing...' : 'Optimize'}</span>
-              </button>
+              <Tooltip content="Run your code through J.'s Five Masters gauntlet — optimized for memory & performance" position="top">
+                <button
+                  onClick={handleOptimize}
+                  disabled={optimizing || !myCode.trim()}
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 bg-yellow-500/10 hover:bg-yellow-500/20 border border-yellow-500/40 text-yellow-400 rounded-sm transition-all text-xs font-hud uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {optimizing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5" />}
+                  <span className="hidden sm:inline">{optimizing ? 'Optimizing...' : 'Optimize'}</span>
+                </button>
+              </Tooltip>
             )}
 
             {/* Terminal Toggle */}
-            <button
-              onClick={() => setShowTerminal(v => !v)}
-              className={`flex items-center gap-1.5 px-2.5 py-1.5 border rounded-sm transition-all text-xs font-hud uppercase tracking-wider ${
-                showTerminal
-                  ? 'border-green-500/50 bg-green-500/10 text-green-400'
-                  : 'border-primary/20 text-primary/50 hover:text-primary/80'
-              }`}
-              title="Toggle terminal"
-            >
-              <TerminalIcon className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Terminal</span>
-              {showTerminal ? <ChevronDown className="w-3 h-3" /> : <ChevronUp className="w-3 h-3" />}
-            </button>
+            <Tooltip content="Toggle simulation terminal — shows output from Simulate Execution" position="top">
+              <button
+                onClick={() => setShowTerminal(v => !v)}
+                className={`flex items-center gap-1.5 px-2.5 py-1.5 border rounded-sm transition-all text-xs font-hud uppercase tracking-wider ${
+                  showTerminal
+                    ? 'border-green-500/50 bg-green-500/10 text-green-400'
+                    : 'border-primary/20 text-primary/50 hover:text-primary/80'
+                }`}
+              >
+                <TerminalIcon className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Terminal</span>
+                {showTerminal ? <ChevronDown className="w-3 h-3" /> : <ChevronUp className="w-3 h-3" />}
+              </button>
+            </Tooltip>
 
             {/* Hardware Profile Selector */}
             <div className="relative">
-              <button
-                onClick={() => setShowProfileMenu(v => !v)}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 border border-primary/30 bg-primary/5 hover:bg-primary/10 text-primary/70 hover:text-primary rounded-sm transition-all text-xs font-hud uppercase tracking-wider"
-                title="Select simulation hardware profile"
-              >
-                <Cpu className="w-3.5 h-3.5 flex-shrink-0" />
-                <span className="hidden sm:inline">{currentProfile.shortLabel}</span>
-                <ChevronDown className="w-3 h-3" />
-              </button>
+              <Tooltip content="Choose the hardware target for AI simulation — affects predicted output & performance analysis" position="top">
+                <button
+                  onClick={() => setShowProfileMenu(v => !v)}
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 border border-primary/30 bg-primary/5 hover:bg-primary/10 text-primary/70 hover:text-primary rounded-sm transition-all text-xs font-hud uppercase tracking-wider"
+                >
+                  <Cpu className="w-3.5 h-3.5 flex-shrink-0" />
+                  <span className="hidden sm:inline">{currentProfile.shortLabel}</span>
+                  <ChevronDown className="w-3 h-3" />
+                </button>
+              </Tooltip>
 
               <AnimatePresence>
                 {showProfileMenu && (
@@ -406,21 +428,16 @@ export function IdePanel() {
                     exit={{ opacity: 0, y: 4 }}
                     className="absolute bottom-full mb-1 left-0 z-50 bg-background border border-primary/30 rounded-sm min-w-[260px] shadow-xl shadow-black/60"
                   >
-                    {/* Header */}
                     <div className="px-3 py-2 border-b border-primary/20 text-[0.65rem] font-hud text-primary/50 uppercase tracking-widest flex items-center gap-2">
                       <Activity className="w-3 h-3" />
                       <span>Simulation Hardware Profile</span>
                     </div>
-
-                    {/* No local runtime disclaimer */}
                     <div className="px-3 py-2 bg-green-900/20 border-b border-green-500/20">
                       <p className="text-[0.65rem] text-green-400/80 font-mono leading-relaxed">
                         ✓ AI Simulation Mode — no Python, Node.js, or compiler installation required.
                         J. predicts exact output for each hardware target.
                       </p>
                     </div>
-
-                    {/* Profile Options */}
                     {SIM_PROFILES.map(profile => (
                       <button
                         key={profile.id}
@@ -445,21 +462,22 @@ export function IdePanel() {
           </div>
 
           {/* Simulate Button */}
-          <button
-            onClick={handleSimulate}
-            disabled={simulating}
-            className="flex items-center gap-2 px-4 py-2 bg-primary/20 hover:bg-primary/40 border border-primary/50 text-primary rounded-sm transition-all text-sm font-hud uppercase tracking-wider glow-border disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {simulating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
-            <span className="hidden sm:inline">{simulating ? 'Simulating...' : 'Simulate Execution'}</span>
-            <span className="sm:hidden">{simulating ? '...' : 'Run'}</span>
-          </button>
+          <Tooltip content="Run AI simulation — J. predicts exact output on the selected hardware. No local runtime needed." position="top">
+            <button
+              onClick={handleSimulate}
+              disabled={simulating}
+              className="flex items-center gap-2 px-4 py-2 bg-primary/20 hover:bg-primary/40 border border-primary/50 text-primary rounded-sm transition-all text-sm font-hud uppercase tracking-wider glow-border disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {simulating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
+              <span className="hidden sm:inline">{simulating ? 'Simulating...' : 'Simulate Execution'}</span>
+              <span className="sm:hidden">{simulating ? '...' : 'Run'}</span>
+            </button>
+          </Tooltip>
         </div>
       </div>
 
       {showDownload && <DownloadModal onClose={() => setShowDownload(false)} />}
 
-      {/* Close profile menu on outside click */}
       {showProfileMenu && (
         <div className="fixed inset-0 z-40" onClick={() => setShowProfileMenu(false)} />
       )}
