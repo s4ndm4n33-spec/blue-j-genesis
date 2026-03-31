@@ -43,6 +43,8 @@ interface ExecutionResult {
   timedOut: boolean;
   phase?: 'compile' | 'run';
   executedAt: string;
+  engine?: 'piston' | 'local';
+  fallback?: boolean;
 }
 
 type IdeTab = 'j_code' | 'my_code' | 'optimized';
@@ -395,9 +397,13 @@ export function IdePanel() {
                   <div className="flex items-center gap-2">
                     {/* Mode badge */}
                     {execResult && !simResult && (
-                      <div className="flex items-center gap-1.5 bg-orange-900/30 border border-orange-500/30 text-orange-400 text-[0.65rem] font-hud px-2 py-0.5 rounded uppercase tracking-wider">
+                      <div className={`flex items-center gap-1.5 text-[0.65rem] font-hud px-2 py-0.5 rounded uppercase tracking-wider border ${
+                        execResult.phase === 'blocked'
+                          ? 'bg-red-900/30 border-red-500/30 text-red-400'
+                          : 'bg-orange-900/30 border-orange-500/30 text-orange-400'
+                      }`}>
                         <Bolt className="w-2.5 h-2.5" />
-                        <span>REAL EXECUTION</span>
+                        <span>{execResult.phase === 'blocked' ? 'BLOCKED' : 'SERVER EXEC'}</span>
                       </div>
                     )}
                     {simResult && !execResult && (
@@ -459,7 +465,7 @@ export function IdePanel() {
                   {execResult && !executing && (
                     <>
                       <div className="text-orange-400/60 mb-2 text-[0.68rem] flex items-center gap-2">
-                        {'>'} {new Date(execResult.executedAt).toLocaleTimeString()} — real execution · {execResult.runtimeMs}ms
+                        {'>'} {new Date(execResult.executedAt).toLocaleTimeString()} — server-side execution · {execResult.runtimeMs}ms
                         {execResult.timedOut && <span className="text-red-400 bg-red-400/10 border border-red-400/30 px-1.5 rounded">TIMEOUT (10s)</span>}
                         {!execResult.timedOut && (
                           <span className={`px-1.5 rounded border text-[0.6rem] ${
@@ -494,7 +500,7 @@ export function IdePanel() {
                       <p>No execution run yet.</p>
                       <p className="text-[0.7rem]">
                         "Simulate" uses AI to predict output on the selected hardware profile.
-                        "Run" executes your code on the live server runtime (Python 3, Node.js, g++).
+                        "Run" executes your code on the server (Python 3, Node.js, g++). Network access and subprocess calls are blocked.
                       </p>
                     </div>
                   )}
