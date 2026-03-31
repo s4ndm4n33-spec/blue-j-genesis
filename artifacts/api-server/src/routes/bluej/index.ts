@@ -8,6 +8,7 @@ import simulateRouter from "./simulate.js";
 import optimizeRouter from "./optimize.js";
 import diagnosticRouter from "./diagnostic.js";
 import githubRouter from "./github.js";
+import executeRouter from "./execute.js";
 
 const router: IRouter = Router();
 
@@ -20,5 +21,6 @@ router.use("/simulate", simulateRouter);
 router.use("/optimize", optimizeRouter);
 router.use("/diagnostic", diagnosticRouter);
 router.use("/github", githubRouter);
+router.use("/execute", executeRouter);
 
 export default router;
