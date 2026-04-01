@@ -1,4 +1,5 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useBlueJStore, SIM_PROFILES, type SimHardwareProfile } from '@/lib/store';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
@@ -61,6 +62,8 @@ export function IdePanel() {
   const [showDownload, setShowDownload] = useState(false);
   const [showTerminal, setShowTerminal] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
+  const [profileMenuPos, setProfileMenuPos] = useState({ top: 0, left: 0 });
+  const profileBtnRef = useRef<HTMLButtonElement>(null);
 
   // Simulation
   const [simulating, setSimulating] = useState(false);
@@ -557,7 +560,14 @@ export function IdePanel() {
             <div className="relative">
               <Tooltip content="Select hardware target for AI simulation" position="top">
                 <button
-                  onClick={() => setShowProfileMenu(v => !v)}
+                  ref={profileBtnRef}
+                  onClick={() => {
+                    if (!showProfileMenu && profileBtnRef.current) {
+                      const r = profileBtnRef.current.getBoundingClientRect();
+                      setProfileMenuPos({ top: r.top, left: r.left });
+                    }
+                    setShowProfileMenu(v => !v);
+                  }}
                   className="flex items-center gap-1.5 px-2.5 py-1.5 border border-primary/30 bg-primary/5 hover:bg-primary/10 text-primary/70 hover:text-primary rounded-sm transition-all text-xs font-hud uppercase tracking-wider"
                 >
                   <Cpu className="w-3.5 h-3.5 flex-shrink-0" />
@@ -565,41 +575,6 @@ export function IdePanel() {
                   <ChevronDown className="w-3 h-3" />
                 </button>
               </Tooltip>
-
-              <AnimatePresence>
-                {showProfileMenu && (
-                  <motion.div
-                    initial={{ opacity: 0, y: 4 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: 4 }}
-                    className="absolute bottom-full mb-1 left-0 z-50 bg-background border border-primary/30 rounded-sm min-w-[260px] shadow-xl shadow-black/60"
-                  >
-                    <div className="px-3 py-2 border-b border-primary/20 text-[0.65rem] font-hud text-primary/50 uppercase tracking-widest flex items-center gap-2">
-                      <Activity className="w-3 h-3" />
-                      <span>Simulation Hardware Profile</span>
-                    </div>
-                    <div className="px-3 py-2 bg-green-900/20 border-b border-green-500/20">
-                      <p className="text-[0.65rem] text-green-400/80 font-mono leading-relaxed">
-                        ✓ AI Simulation Mode — no local runtime required for Simulate.
-                        Use "Run" for actual live execution on this server.
-                      </p>
-                    </div>
-                    {SIM_PROFILES.map(profile => (
-                      <button
-                        key={profile.id}
-                        onClick={() => { setSimHardwareProfile(profile.id); setShowProfileMenu(false); setSimResult(null); }}
-                        className={`w-full text-left px-3 py-2.5 flex items-start gap-3 hover:bg-primary/10 transition-colors border-b border-primary/10 last:border-0 ${simHardwareProfile === profile.id ? 'bg-primary/10' : ''}`}
-                      >
-                        <ChevronRight className={`w-3 h-3 mt-0.5 flex-shrink-0 ${simHardwareProfile === profile.id ? 'text-primary opacity-100' : 'opacity-0'}`} />
-                        <div>
-                          <div className={`text-xs font-hud uppercase tracking-wider ${simHardwareProfile === profile.id ? 'text-primary' : 'text-primary/70'}`}>{profile.label}</div>
-                          <div className="text-[0.65rem] text-primary/40 font-mono mt-0.5">{profile.desc}</div>
-                        </div>
-                      </button>
-                    ))}
-                  </motion.div>
-                )}
-              </AnimatePresence>
             </div>
           </div>
 
@@ -634,7 +609,44 @@ export function IdePanel() {
       </div>
 
       {showDownload && <DownloadModal onClose={() => setShowDownload(false)} />}
-      {showProfileMenu && <div className="fixed inset-0 z-40" onClick={() => setShowProfileMenu(false)} />}
+
+      {/* Profile dropdown — portal so overflow:hidden on the IDE panel doesn't clip it */}
+      {showProfileMenu && createPortal(
+        <>
+          {/* Backdrop */}
+          <div className="fixed inset-0 z-[9998]" onClick={() => setShowProfileMenu(false)} />
+          {/* Menu — positioned above the trigger button */}
+          <div
+            className="fixed z-[9999] bg-background border border-primary/30 rounded-sm min-w-[260px] shadow-xl shadow-black/80"
+            style={{ top: profileMenuPos.top - 4, left: profileMenuPos.left, transform: 'translateY(-100%)' }}
+          >
+            <div className="px-3 py-2 border-b border-primary/20 text-[0.65rem] font-hud text-primary/50 uppercase tracking-widest flex items-center gap-2">
+              <Activity className="w-3 h-3" />
+              <span>Simulation Hardware Profile</span>
+            </div>
+            <div className="px-3 py-2 bg-green-900/20 border-b border-green-500/20">
+              <p className="text-[0.65rem] text-green-400/80 font-mono leading-relaxed">
+                ✓ AI Simulation Mode — J. predicts output for the selected target.
+                Use "Run" for actual live server execution.
+              </p>
+            </div>
+            {SIM_PROFILES.map(profile => (
+              <button
+                key={profile.id}
+                onClick={() => { setSimHardwareProfile(profile.id); setShowProfileMenu(false); setSimResult(null); }}
+                className={`w-full text-left px-3 py-2.5 flex items-start gap-3 hover:bg-primary/10 transition-colors border-b border-primary/10 last:border-0 ${simHardwareProfile === profile.id ? 'bg-primary/10' : ''}`}
+              >
+                <ChevronRight className={`w-3 h-3 mt-0.5 flex-shrink-0 ${simHardwareProfile === profile.id ? 'text-primary opacity-100' : 'opacity-0'}`} />
+                <div>
+                  <div className={`text-xs font-hud uppercase tracking-wider ${simHardwareProfile === profile.id ? 'text-primary' : 'text-primary/70'}`}>{profile.label}</div>
+                  <div className="text-[0.65rem] text-primary/40 font-mono mt-0.5">{profile.desc}</div>
+                </div>
+              </button>
+            ))}
+          </div>
+        </>,
+        document.body
+      )}
     </>
   );
 }
