@@ -46,7 +46,7 @@ export function HudHeader() {
               </div>
               <div>
                 <h1 className="font-display font-bold text-xl text-primary glow-text tracking-widest leading-none">B.L.U.E.-J.</h1>
-                <p className="text-[0.65rem] font-mono text-primary/60 uppercase tracking-widest">AI Synthesis Engine v1.0</p>
+                <p className="text-[0.6rem] font-mono text-primary/50 uppercase tracking-widest leading-tight">Build · Learn · Utilize · Engineer</p>
               </div>
             </div>
 

@@ -165,7 +165,7 @@ export function DiagnosticSequence({ onComplete }: { onComplete: () => void }) {
           </div>
           <div>
             <p className="font-hud text-primary uppercase tracking-widest text-sm">B.L.U.E.-J. — System Clearance</p>
-            <p className="text-primary/50 text-xs font-mono">Pre-session diagnostic initializing...</p>
+            <p className="text-primary/40 text-[0.6rem] font-mono uppercase tracking-widest">Build · Learn · Utilize · Engineer</p>
           </div>
         </div>
 

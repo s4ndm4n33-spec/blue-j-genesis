@@ -139,9 +139,9 @@ export function HelpOverlay({ open, onClose }: HelpOverlayProps) {
             {/* Intro */}
             <div className="px-6 py-4 border-b border-primary/10 bg-primary/5">
               <p className="text-xs font-mono text-primary/70 leading-relaxed">
-                B.L.U.E.-J. is an AI coding simulator. J. — your mentor — teaches Python, C++, and JavaScript
-                with the goal of helping you build a local AI assistant on your own hardware.
-                There is no compiler, no runtime, and no installation required — J. handles everything through AI simulation.
+                <span className="text-primary font-bold">B.L.U.E.-J.</span> — <span className="text-primary/90">Build. Learn. Utilize. Engineer.</span> — is an AI coding mentor simulator.
+                J. teaches Python, C++, and JavaScript with the goal of helping you build a local AI assistant on your own hardware.
+                Write code in your workspace, run it live on the server, or use AI simulation to predict output on any hardware profile.
               </p>
             </div>
 
