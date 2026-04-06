@@ -15,7 +15,8 @@ export function HardwareStrip() {
         initial={{ y: 50, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
         exit={{ y: 50, opacity: 0 }}
-        className="fixed bottom-0 left-0 right-0 h-10 bg-secondary/80 backdrop-blur-xl border-t border-primary/30 z-40 flex items-center justify-between px-4 font-mono text-xs text-primary/70"
+        className="fixed bottom-0 left-0 right-0 bg-secondary/80 backdrop-blur-xl border-t border-primary/30 z-40 flex items-center justify-between px-4 font-mono text-xs text-primary/70"
+        style={{ paddingBottom: 'env(safe-area-inset-bottom)', minHeight: '2.5rem' }}
       >
         <div className="flex items-center gap-6">
           <div className="flex items-center gap-2">

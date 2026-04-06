@@ -17,28 +17,36 @@ export function Tooltip({ content, children, position = 'top', maxWidth = 260 }:
     if (!triggerRef.current) return;
     const rect = triggerRef.current.getBoundingClientRect();
     const GAP = 8;
-    let top = 0;
-    let left = 0;
+    let top = 0, left = 0;
     if (position === 'top') {
-      top = rect.top - GAP;
-      left = rect.left + rect.width / 2;
+      top = rect.top - GAP; left = rect.left + rect.width / 2;
     } else if (position === 'bottom') {
-      top = rect.bottom + GAP;
-      left = rect.left + rect.width / 2;
+      top = rect.bottom + GAP; left = rect.left + rect.width / 2;
     } else if (position === 'left') {
-      top = rect.top + rect.height / 2;
-      left = rect.left - GAP;
+      top = rect.top + rect.height / 2; left = rect.left - GAP;
     } else {
-      top = rect.top + rect.height / 2;
-      left = rect.right + GAP;
+      top = rect.top + rect.height / 2; left = rect.right + GAP;
     }
     setCoords({ top, left });
   };
 
-  const handleEnter = () => {
-    updatePosition();
-    setVisible(true);
-  };
+  const show = () => { updatePosition(); setVisible(true); };
+  const hide = () => setVisible(false);
+
+  // Dismiss on any touch/click elsewhere (handles stuck tooltip on mobile)
+  useEffect(() => {
+    if (!visible) return;
+    const onOutside = (e: Event) => {
+      if (triggerRef.current && triggerRef.current.contains(e.target as Node)) return;
+      setVisible(false);
+    };
+    window.addEventListener('touchstart', onOutside, { passive: true });
+    window.addEventListener('pointerdown', onOutside, { capture: true });
+    return () => {
+      window.removeEventListener('touchstart', onOutside);
+      window.removeEventListener('pointerdown', onOutside, { capture: true });
+    };
+  }, [visible]);
 
   if (!content) return <>{children}</>;
 
@@ -47,10 +55,11 @@ export function Tooltip({ content, children, position = 'top', maxWidth = 260 }:
       <div
         ref={triggerRef}
         className="inline-flex"
-        onMouseEnter={handleEnter}
-        onMouseLeave={() => setVisible(false)}
-        onFocus={handleEnter}
-        onBlur={() => setVisible(false)}
+        onMouseEnter={show}
+        onMouseLeave={hide}
+        onPointerLeave={hide}
+        onFocus={show}
+        onBlur={hide}
       >
         {children}
       </div>

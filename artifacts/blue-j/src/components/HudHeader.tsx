@@ -4,7 +4,11 @@ import { Monitor, Terminal, Code2, ShieldAlert, ShieldCheck, GraduationCap, Help
 import { Tooltip } from './Tooltip';
 import { HelpOverlay } from './HelpOverlay';
 
-export function HudHeader() {
+interface HudHeaderProps {
+  onOpenTutorial?: () => void;
+}
+
+export function HudHeader({ onOpenTutorial }: HudHeaderProps) {
   const {
     selectedLanguage, setSelectedLanguage,
     selectedOs, setSelectedOs,
@@ -133,6 +137,16 @@ export function HudHeader() {
                 }`}
               >
                 {hardwareMonitorEnabled ? <ShieldCheck className="w-4 h-4" /> : <ShieldAlert className="w-4 h-4" />}
+              </button>
+            </Tooltip>
+
+            {/* Tutorial Button */}
+            <Tooltip content="Interactive tutorial — J. walks you through the workspace step by step" position="bottom">
+              <button
+                onClick={() => onOpenTutorial?.()}
+                className="p-1.5 min-h-[32px] min-w-[32px] rounded-sm border border-primary/20 hover:border-primary/50 hover:bg-primary/10 text-primary/50 hover:text-primary transition-all flex items-center justify-center"
+              >
+                <GraduationCap className="w-4 h-4" />
               </button>
             </Tooltip>
 

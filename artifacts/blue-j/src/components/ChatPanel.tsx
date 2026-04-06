@@ -141,8 +141,8 @@ export function ChatPanel() {
         )}
       </AnimatePresence>
 
-      {/* Input Area */}
-      <div className="p-4 border-t border-primary/20 bg-secondary/30">
+      {/* Input Area — pb accounts for iOS home indicator / Android nav bar */}
+      <div className="p-4 border-t border-primary/20 bg-secondary/30" style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}>
         <div className="flex items-end gap-2">
           <textarea
             value={input}

@@ -68,6 +68,7 @@ interface BlueJState {
   myCode: string;
   learnerMode: LearnerMode;
   diagnosticDone: boolean;
+  tutorialDone: boolean;
   simHardwareProfile: SimHardwareProfile;
   messages: ChatMessage[];
   isTyping: boolean;
@@ -86,6 +87,7 @@ interface BlueJState {
   setLearnerMode: (mode: LearnerMode) => void;
   cycleLearnerMode: () => void;
   setDiagnosticDone: (done: boolean) => void;
+  setTutorialDone: (done: boolean) => void;
   detectSystem: () => void;
   addMessage: (msg: ChatMessage) => void;
   updateLastAssistantMessage: (id: string, content: string) => void;
@@ -119,6 +121,7 @@ export const useBlueJStore = create<BlueJState>()(
       myCode: "# Your code goes here...\n\nprint('Hello, J.')",
       learnerMode: 'adult-beginner',
       diagnosticDone: false,
+      tutorialDone: false,
       simHardwareProfile: 'auto',
       messages: [{
         id: 'welcome',
@@ -138,6 +141,7 @@ export const useBlueJStore = create<BlueJState>()(
       setMyCode: (code) => set({ myCode: code }),
       setLearnerMode: (mode) => set({ learnerMode: mode }),
       setDiagnosticDone: (done) => set({ diagnosticDone: done }),
+      setTutorialDone: (done) => set({ tutorialDone: done }),
       addMessage: (msg) => set(s => ({ messages: [...s.messages, msg] })),
       updateLastAssistantMessage: (id, content) => set(s => ({
         messages: s.messages.map(m => m.id === id ? { ...m, content } : m)
@@ -226,6 +230,7 @@ export const useBlueJStore = create<BlueJState>()(
         myCode: state.myCode,
         learnerMode: state.learnerMode,
         simHardwareProfile: state.simHardwareProfile,
+        tutorialDone: state.tutorialDone,
         portfolio: state.portfolio,
       })
     }
