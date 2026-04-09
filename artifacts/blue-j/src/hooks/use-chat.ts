@@ -11,7 +11,7 @@ export function useChatStream() {
     selectedLanguage, selectedOs,
     hardwareInfo, learnerMode,
     messages, isTyping,
-    addMessage, updateLastAssistantMessage, setIsTyping, addSystemMessage,
+    addMessage, updateLastAssistantMessage, setIsTyping, addSystemMessage, clearMessages, addChapterSummary,
   } = useBlueJStore();
 
   const ttsMutation = useTextToSpeech();
@@ -87,7 +87,14 @@ export function useChatStream() {
               assistantContent += data.content;
               updateLastAssistantMessage(assistantMsgId, assistantContent);
             }
-            if (data.conversationId && !conversationId) {
+            if (data.done && data.conversationId) {
+              setConversationId(data.conversationId);
+              if (data.milestoneReset) {
+                if (data.chapterSummary) addChapterSummary(data.chapterSummary);
+                clearMessages();
+                addSystemMessage("── CHAPTER COMPLETE — J. has archived this chapter. Open Export & Save → Progress to review all chapters. ──");
+              }
+            } else if (data.conversationId && !conversationId) {
               setConversationId(data.conversationId);
             }
           } catch {
@@ -118,7 +125,7 @@ export function useChatStream() {
   }, [
     sessionId, conversationId, selectedLanguage, selectedOs,
     hardwareInfo, learnerMode, setConversationId,
-    addMessage, updateLastAssistantMessage, setIsTyping, ttsMutation
+    addMessage, updateLastAssistantMessage, setIsTyping, addSystemMessage, clearMessages, addChapterSummary, ttsMutation
   ]);
 
   return { messages, isTyping, sendMessage, addSystemMessage };

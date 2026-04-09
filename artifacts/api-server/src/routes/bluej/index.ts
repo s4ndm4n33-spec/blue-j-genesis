@@ -9,6 +9,7 @@ import optimizeRouter from "./optimize.js";
 import diagnosticRouter from "./diagnostic.js";
 import githubRouter from "./github.js";
 import executeRouter from "./execute.js";
+import exportRouter from "./export.js";
 
 const router: IRouter = Router();
 
@@ -22,5 +23,6 @@ router.use("/optimize", optimizeRouter);
 router.use("/diagnostic", diagnosticRouter);
 router.use("/github", githubRouter);
 router.use("/execute", executeRouter);
+router.use("/export", exportRouter);
 
 export default router;

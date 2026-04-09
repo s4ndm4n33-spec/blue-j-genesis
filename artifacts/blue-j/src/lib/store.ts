@@ -93,6 +93,9 @@ interface BlueJState {
   updateLastAssistantMessage: (id: string, content: string) => void;
   setIsTyping: (v: boolean) => void;
   addSystemMessage: (content: string) => void;
+  clearMessages: () => void;
+  chapterSummaries: string[];
+  addChapterSummary: (summary: string) => void;
   saveToPortfolio: (name: string, notes?: string) => void;
   loadFromPortfolio: (id: string) => void;
   deleteFromPortfolio: (id: string) => void;
@@ -123,6 +126,7 @@ export const useBlueJStore = create<BlueJState>()(
       diagnosticDone: false,
       tutorialDone: false,
       simHardwareProfile: 'auto',
+      chapterSummaries: [],
       messages: [{
         id: 'welcome',
         role: 'assistant' as const,
@@ -154,6 +158,19 @@ export const useBlueJStore = create<BlueJState>()(
           content,
           timestamp: Date.now()
         }]
+      })),
+
+      clearMessages: () => set({
+        messages: [{
+          id: 'welcome',
+          role: 'assistant' as const,
+          content: "Greetings. I am J. I understand we are to build a localized AI instance today. A clone of myself, if you will. Let us begin by evaluating your system environment.",
+          timestamp: Date.now()
+        }]
+      }),
+
+      addChapterSummary: (summary) => set(s => ({
+        chapterSummaries: [...s.chapterSummaries, summary].slice(-50),
       })),
 
       cycleLearnerMode: () => {
@@ -232,6 +249,7 @@ export const useBlueJStore = create<BlueJState>()(
         simHardwareProfile: state.simHardwareProfile,
         tutorialDone: state.tutorialDone,
         portfolio: state.portfolio,
+        chapterSummaries: state.chapterSummaries,
       })
     }
   )

@@ -3,7 +3,7 @@ import { useBlueJStore } from '@/lib/store';
 import {
   X, Download, Cpu, Database, HardDrive, AlertTriangle, CheckCircle2,
   ChevronDown, ChevronUp, Github, BookOpen, Loader2, ExternalLink,
-  Trash2, FolderOpen, Plus, Lock, Globe, Code2
+  Trash2, FolderOpen, Plus, Lock, Globe, Code2, ScrollText, Bot
 } from 'lucide-react';
 
 interface Props {
@@ -20,12 +20,13 @@ function getModelRecommendation(ram: number | null) {
   return { name: "codellama:34b", display: "CodeLlama 34B", size: "19.0GB", reason: "Studio-grade code assistance" };
 }
 
-type Tab = 'offline' | 'github' | 'portfolio';
+type Tab = 'offline' | 'github' | 'portfolio' | 'progress';
 
 export function DownloadModal({ onClose }: Props) {
   const {
     selectedOs, selectedLanguage, hardwareInfo, myCode,
     portfolio, saveToPortfolio, loadFromPortfolio, deleteFromPortfolio,
+    chapterSummaries, learnerMode,
   } = useBlueJStore();
 
   const [tab, setTab] = useState<Tab>('offline');
@@ -124,10 +125,51 @@ export function DownloadModal({ onClose }: Props) {
     setTimeout(() => { setLoadedId(null); onClose(); }, 600);
   };
 
+  const handleDownloadProgress = () => {
+    const lines = [
+      "B.L.U.E.-J. — PROGRESS REPORT",
+      `Generated: ${new Date().toISOString()}`,
+      `Language: ${selectedLanguage} | Level: ${learnerMode}`,
+      "",
+      "═══════════════════════════════════════════",
+      "  CHAPTER ARCHIVE — WHAT J. AND I COVERED",
+      "═══════════════════════════════════════════",
+      "",
+      ...(chapterSummaries.length === 0
+        ? ["No chapters archived yet. Keep chatting with J. — chapter archives are created automatically as your conversation grows."]
+        : chapterSummaries.map((s, i) => `Chapter ${i + 1}:\n${s}\n`)),
+      "",
+      "═══════════════════════════════════════════",
+      "  HOW TO CONTINUE IN ANOTHER AI MODEL",
+      "═══════════════════════════════════════════",
+      "",
+      "1. Download the J. Persona File from this same dialog.",
+      "2. Paste it as the system prompt in your preferred AI (ChatGPT,",
+      "   Claude, Gemini, Grok, etc.).",
+      "3. Paste this progress report into your first message so the",
+      "   new model understands what you have already covered.",
+      "4. Continue learning — the model will pick up where J. left off.",
+    ];
+    const blob = new Blob([lines.join("\n")], { type: "text/plain;charset=utf-8" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "j-progress-report.txt";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(a.href);
+  };
+
+  const buildPersonaUrl = () => {
+    const p = new URLSearchParams({ language: selectedLanguage, os: selectedOs, learnerMode });
+    return `/api/bluej/export/persona?${p}`;
+  };
+
   const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
     { id: 'offline', label: 'Offline', icon: <Download className="w-3.5 h-3.5" /> },
     { id: 'github',  label: 'GitHub',  icon: <Github className="w-3.5 h-3.5" /> },
     { id: 'portfolio', label: 'Portfolio', icon: <BookOpen className="w-3.5 h-3.5" /> },
+    { id: 'progress', label: 'Progress', icon: <ScrollText className="w-3.5 h-3.5" /> },
   ];
 
   return (
@@ -530,6 +572,113 @@ export function DownloadModal({ onClose }: Props) {
                   </div>
                 )}
               </div>
+            </div>
+          )}
+
+          {/* ── PROGRESS TAB ── */}
+          {tab === 'progress' && (
+            <div className="p-5 space-y-4">
+
+              {/* Intro */}
+              <div className="border border-primary/20 rounded-sm p-3 bg-secondary/30">
+                <p className="text-xs font-mono text-primary/60 leading-relaxed">
+                  Download your progress report and J.&apos;s persona file to continue your session
+                  in any other AI model — ChatGPT, Claude, Gemini, Grok, or any API.
+                  Feed the persona file as the system prompt and paste the progress report
+                  in your first message.
+                </p>
+              </div>
+
+              {/* J. Persona download */}
+              <div className="border border-primary/30 rounded-sm overflow-hidden">
+                <div className="bg-primary/5 p-4 flex items-start justify-between gap-4">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <Bot className="w-4 h-4 text-primary" />
+                      <h3 className="font-hud text-primary text-sm uppercase tracking-widest">J. Persona File</h3>
+                    </div>
+                    <p className="text-xs text-primary/60 leading-relaxed">
+                      The complete system prompt that makes any AI model respond as J. — personality,
+                      Five Sovereign Masters, safety protocols, code quality gauntlet, and all.
+                    </p>
+                    <p className="text-[0.65rem] font-mono text-primary/40 mt-1.5">
+                      Calibrated for: <span className="text-primary/60">{selectedLanguage}</span> ·{' '}
+                      <span className="text-primary/60">{selectedOs}</span> ·{' '}
+                      <span className="text-primary/60">{learnerMode}</span>
+                    </p>
+                  </div>
+                  <a
+                    href={buildPersonaUrl()}
+                    download="j-persona.txt"
+                    className="flex items-center gap-2 px-4 py-2.5 rounded-sm border border-primary/50 bg-primary/10 hover:bg-primary/25 text-primary text-sm font-hud uppercase tracking-wider transition-all glow-border whitespace-nowrap flex-shrink-0"
+                  >
+                    <Download className="w-4 h-4" />
+                    Download
+                  </a>
+                </div>
+              </div>
+
+              {/* Progress Report download */}
+              <div className="border border-accent/30 rounded-sm overflow-hidden">
+                <div className="bg-accent/5 p-4 flex items-start justify-between gap-4">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <ScrollText className="w-4 h-4 text-accent" />
+                      <h3 className="font-hud text-accent text-sm uppercase tracking-widest">Progress Report</h3>
+                    </div>
+                    <p className="text-xs text-accent/60 leading-relaxed">
+                      All chapter archives with instructions on how to continue your lesson in another model.
+                    </p>
+                    <p className="text-[0.65rem] font-mono text-accent/40 mt-1.5">
+                      {chapterSummaries.length === 0
+                        ? 'No chapters archived yet — keep chatting.'
+                        : `${chapterSummaries.length} chapter${chapterSummaries.length > 1 ? 's' : ''} archived`}
+                    </p>
+                  </div>
+                  <button
+                    onClick={handleDownloadProgress}
+                    className="flex items-center gap-2 px-4 py-2.5 rounded-sm border border-accent/50 bg-accent/10 hover:bg-accent/25 text-accent text-sm font-hud uppercase tracking-wider transition-all whitespace-nowrap flex-shrink-0"
+                  >
+                    <Download className="w-4 h-4" />
+                    Download
+                  </button>
+                </div>
+              </div>
+
+              {/* Chapter Archive Preview */}
+              <div>
+                <p className="text-[0.65rem] font-hud text-primary/50 uppercase tracking-widest mb-2 flex items-center gap-2">
+                  <ScrollText className="w-3 h-3" />
+                  Chapter Archive ({chapterSummaries.length})
+                </p>
+
+                {chapterSummaries.length === 0 ? (
+                  <div className="border border-primary/10 rounded-sm p-6 text-center">
+                    <ScrollText className="w-6 h-6 text-primary/20 mx-auto mb-2" />
+                    <p className="text-xs text-primary/40 font-mono">
+                      No chapters archived yet.
+                    </p>
+                    <p className="text-[0.65rem] text-primary/30 font-mono mt-1">
+                      Chapter archives are created automatically after 20 messages.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {chapterSummaries.map((summary, i) => (
+                      <div key={i} className="border border-primary/15 rounded-sm p-3 bg-secondary/20">
+                        <p className="text-[0.65rem] font-hud text-primary/50 uppercase tracking-widest mb-1">
+                          Chapter {i + 1}
+                        </p>
+                        <p className="text-xs font-mono text-primary/70 leading-relaxed">{summary}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <p className="text-[0.62rem] text-primary/30 text-center font-mono">
+                Persona file is generated fresh each download using your current settings.
+              </p>
             </div>
           )}
         </div>

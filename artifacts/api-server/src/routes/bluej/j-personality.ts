@@ -189,8 +189,8 @@ FORMAT:
 - Use fenced code blocks with explicit language tag (e.g. \`\`\`python). Never omit the language tag.
 - Prose for explanations, code blocks only for code. Never inline code in prose when a block is appropriate.
 - When you include code, preface it briefly — one sentence on what it does and why.
-- Maximum response: around 250 words of prose + one code block, unless more is genuinely needed.
-- End each teaching message with a clear, single next action for the user.`;
+- Maximum response: around 200 words of prose + one code block.
+- End each message with exactly ONE next step — a single sentence, ≤25 words. No bullet lists. No numbered next-step lists.`;
 }
 
 export function buildSafetyCheck(userMessage: string): { safe: boolean; reason?: string } {

@@ -119,6 +119,32 @@ Respond ONLY in valid JSON (no markdown, no explanation):
   }
 }
 
+const MILESTONE_MESSAGE_THRESHOLD = 20;
+
+async function summarizeConversation(
+  msgs: Array<{ role: string; content: string }>,
+  language: string
+): Promise<string> {
+  const transcript = msgs
+    .slice(-20)
+    .map((m) => `${m.role}: ${m.content.slice(0, 400)}`)
+    .join("\n");
+  try {
+    const resp = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      max_completion_tokens: 150,
+      temperature: 0.4,
+      messages: [
+        { role: "system", content: "Summarize this coding lesson in 2-3 sentences. State the language, concepts covered, and any code written. Be concise." },
+        { role: "user", content: `${language} lesson:\n${transcript}` },
+      ],
+    });
+    return resp.choices[0]?.message?.content ?? "Previous chapter completed.";
+  } catch {
+    return "Previous chapter completed.";
+  }
+}
+
 async function generateWithGauntlet(
   chatMessages: Array<{ role: "system" | "user" | "assistant"; content: string }>,
   language: string,
@@ -134,6 +160,7 @@ async function generateWithGauntlet(
     const response = await openai.chat.completions.create({
       model: "gpt-5.2",
       max_completion_tokens: 8192,
+      temperature: 1,
       messages: currentMessages,
       stream: false,
     });
@@ -239,23 +266,59 @@ router.post("/", async (req, res) => {
       learnerMode,
     });
 
+    // ── MILESTONE RESET ────────────────────────────────────────────────────
+    // When a conversation grows long, summarize it and start a fresh one.
+    // The summary is pinned as the first assistant message so J. remembers context.
+    let milestoneReset = false;
+    let chapterSummary = "";
+    if (conversationId && messageHistory.length >= MILESTONE_MESSAGE_THRESHOLD) {
+      chapterSummary = await summarizeConversation(messageHistory, language);
+      const newConv = await db
+        .insert(conversationsTable)
+        .values({ title: `Chapter ${Math.ceil(messageHistory.length / MILESTONE_MESSAGE_THRESHOLD)} — ${sessionId.slice(0, 8)}` })
+        .returning();
+      const newConvId = newConv[0].id;
+      await db.insert(messagesTable).values({
+        conversationId: newConvId,
+        role: "assistant",
+        content: `[CHAPTER ARCHIVE — what we covered: ${chapterSummary}]`,
+      });
+      conversationId = newConvId;
+      milestoneReset = true;
+    }
+    // ───────────────────────────────────────────────────────────────────────
+
     await db.insert(messagesTable).values({
       conversationId,
       role: "user",
       content: message,
     });
 
-    const HISTORY_TOKEN_BUDGET = 240_000;
+    // Fetch fresh history (may be the new conversation after milestone reset)
+    const freshMessages = milestoneReset
+      ? await db
+          .select()
+          .from(messagesTable)
+          .where(eq(messagesTable.conversationId, conversationId))
+          .orderBy(messagesTable.createdAt)
+      : existingMessages;
+
+    const freshHistory = freshMessages.map((m) => ({
+      role: m.role as "user" | "assistant",
+      content: m.content,
+    }));
+
+    const HISTORY_TOKEN_BUDGET = 2_048;
     const estimateTokens = (text: string) => Math.ceil(text.length / 4);
 
-    const trimmedHistory: typeof messageHistory = [];
+    const trimmedHistory: typeof freshHistory = [];
     let usedTokens = estimateTokens(message);
-    for (let i = messageHistory.length - 1; i >= 0; i--) {
-      const msgTokens = estimateTokens(messageHistory[i].content);
+    for (let i = freshHistory.length - 1; i >= 0; i--) {
+      const msgTokens = estimateTokens(freshHistory[i].content);
       if (usedTokens + msgTokens > HISTORY_TOKEN_BUDGET && trimmedHistory.length >= 2) {
         break;
       }
-      trimmedHistory.unshift(messageHistory[i]);
+      trimmedHistory.unshift(freshHistory[i]);
       usedTokens += msgTokens;
     }
 
@@ -291,7 +354,7 @@ router.post("/", async (req, res) => {
       res.write(`data: ${JSON.stringify({ content: fullResponse.slice(i, i + CHUNK) })}\n\n`);
     }
 
-    res.write(`data: ${JSON.stringify({ done: true, conversationId })}\n\n`);
+    res.write(`data: ${JSON.stringify({ done: true, conversationId, milestoneReset, chapterSummary })}\n\n`);
     res.end();
   } catch (err) {
     req.log.error({ err }, "Chat error");
