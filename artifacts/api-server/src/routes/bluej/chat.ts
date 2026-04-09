@@ -245,9 +245,23 @@ router.post("/", async (req, res) => {
       content: message,
     });
 
+    const HISTORY_TOKEN_BUDGET = 240_000;
+    const estimateTokens = (text: string) => Math.ceil(text.length / 4);
+
+    const trimmedHistory: typeof messageHistory = [];
+    let usedTokens = estimateTokens(message);
+    for (let i = messageHistory.length - 1; i >= 0; i--) {
+      const msgTokens = estimateTokens(messageHistory[i].content);
+      if (usedTokens + msgTokens > HISTORY_TOKEN_BUDGET && trimmedHistory.length >= 2) {
+        break;
+      }
+      trimmedHistory.unshift(messageHistory[i]);
+      usedTokens += msgTokens;
+    }
+
     const chatMessages = [
       { role: "system" as const, content: systemPrompt },
-      ...messageHistory.slice(-20).map((m) => ({
+      ...trimmedHistory.map((m) => ({
         role: m.role as "user" | "assistant",
         content: m.content,
       })),
