@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useBlueJStore } from '@/lib/store';
+import { useProgressStore } from '@/lib/progress-store';
 import {
   X, Download, Cpu, Database, HardDrive, AlertTriangle, CheckCircle2,
   ChevronDown, ChevronUp, Github, BookOpen, Loader2, ExternalLink,
@@ -28,6 +29,7 @@ export function DownloadModal({ onClose }: Props) {
     portfolio, saveToPortfolio, loadFromPortfolio, deleteFromPortfolio,
     chapterSummaries, learnerMode,
   } = useBlueJStore();
+  const { trackEvent } = useProgressStore();
 
   const [tab, setTab] = useState<Tab>('offline');
 
@@ -113,6 +115,7 @@ export function DownloadModal({ onClose }: Props) {
   const handleSavePortfolio = () => {
     if (!myCode.trim()) return;
     saveToPortfolio(saveName || `${selectedLanguage} project`, saveNotes);
+    trackEvent('portfolio');
     setSaveName('');
     setSaveNotes('');
     setJustSaved(true);

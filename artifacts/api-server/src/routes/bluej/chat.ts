@@ -1,5 +1,6 @@
 import { Router, type IRouter } from "express";
-import { openai } from "@workspace/integrations-openai-ai-server";
+import { getOpenAIClient } from "./openai-client.js";
+import type OpenAI from "openai";
 import { db } from "@workspace/db";
 import { conversations as conversationsTable, messages as messagesTable, userProgressTable } from "@workspace/db";
 import { ChatWithJBody } from "@workspace/api-zod";
@@ -123,14 +124,15 @@ const MILESTONE_MESSAGE_THRESHOLD = 20;
 
 async function summarizeConversation(
   msgs: Array<{ role: string; content: string }>,
-  language: string
+  language: string,
+  client: OpenAI
 ): Promise<string> {
   const transcript = msgs
     .slice(-20)
     .map((m) => `${m.role}: ${m.content.slice(0, 400)}`)
     .join("\n");
   try {
-    const resp = await openai.chat.completions.create({
+    const resp = await client.chat.completions.create({
       model: "gpt-4o-mini",
       max_completion_tokens: 150,
       temperature: 0.4,
@@ -148,6 +150,8 @@ async function summarizeConversation(
 async function generateWithGauntlet(
   chatMessages: Array<{ role: "system" | "user" | "assistant"; content: string }>,
   language: string,
+  client: OpenAI,
+  isByok: boolean,
   maxRetries = 2
 ): Promise<string> {
   let attempt = 0;
@@ -157,10 +161,10 @@ async function generateWithGauntlet(
   while (attempt < maxRetries) {
     attempt++;
 
-    const response = await openai.chat.completions.create({
-      model: "gpt-5.2",
+    const response = await client.chat.completions.create({
+      model: isByok ? "gpt-4o" : "gpt-5.2",
       max_completion_tokens: 8192,
-      temperature: 1,
+      ...(isByok ? { temperature: 0.7 } : {}),
       messages: currentMessages,
       stream: false,
     });
@@ -212,6 +216,8 @@ async function generateWithGauntlet(
 
 router.post("/", async (req, res) => {
   try {
+    const aiClient = getOpenAIClient(req.headers);
+    const isByok = typeof req.headers["x-openai-key"] === "string" && (req.headers["x-openai-key"] as string).startsWith("sk-");
     const body = ChatWithJBody.parse(req.body);
     const { sessionId, message, language, os, phaseIndex, taskIndex, hardwareInfo } = body;
 
@@ -272,7 +278,7 @@ router.post("/", async (req, res) => {
     let milestoneReset = false;
     let chapterSummary = "";
     if (conversationId && messageHistory.length >= MILESTONE_MESSAGE_THRESHOLD) {
-      chapterSummary = await summarizeConversation(messageHistory, language);
+      chapterSummary = await summarizeConversation(messageHistory, language, aiClient);
       const newConv = await db
         .insert(conversationsTable)
         .values({ title: `Chapter ${Math.ceil(messageHistory.length / MILESTONE_MESSAGE_THRESHOLD)} — ${sessionId.slice(0, 8)}` })
@@ -331,7 +337,7 @@ router.post("/", async (req, res) => {
       { role: "user" as const, content: message },
     ];
 
-    const fullResponse = await generateWithGauntlet(chatMessages, language);
+    const fullResponse = await generateWithGauntlet(chatMessages, language, aiClient, isByok);
 
     await db.insert(messagesTable).values({
       conversationId,

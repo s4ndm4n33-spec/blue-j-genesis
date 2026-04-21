@@ -1,6 +1,7 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useBlueJStore, SIM_PROFILES, type SimHardwareProfile } from '@/lib/store';
+import { useProgressStore } from '@/lib/progress-store';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import {
@@ -56,6 +57,16 @@ export function IdePanel() {
     simHardwareProfile, setSimHardwareProfile, hardwareInfo,
   } = useBlueJStore();
   const { messages, addSystemMessage } = useChatStream();
+  const { trackLinesWritten } = useProgressStore();
+
+  const prevLineCountRef = useRef(0);
+  useEffect(() => {
+    const newCount = myCode.split('\n').length;
+    if (newCount > prevLineCountRef.current) {
+      trackLinesWritten(newCount - prevLineCountRef.current);
+    }
+    prevLineCountRef.current = newCount;
+  }, [myCode]);
 
   const [activeTab, setActiveTab] = useState<IdeTab>('j_code');
   const [copied, setCopied] = useState(false);

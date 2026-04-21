@@ -7,17 +7,21 @@ import { IdePanel } from '@/components/IdePanel';
 import { HardwareStrip } from '@/components/HardwareStrip';
 import { DiagnosticSequence } from '@/components/DiagnosticSequence';
 import { TutorialOverlay } from '@/components/TutorialOverlay';
+import { DailyGoals } from '@/components/DailyGoals';
+import { AchievementsPanel } from '@/components/AchievementsPanel';
+import { WellnessPanel } from '@/components/WellnessPanel';
+import { UnlockToast } from '@/components/UnlockToast';
 import { AnimatePresence } from 'framer-motion';
+import { Terminal, Code2, Target, Award, Heart } from 'lucide-react';
 
 export default function SimulatorPage() {
-  const { detectSystem, activeTab, diagnosticDone, setDiagnosticDone, tutorialDone, setTutorialDone } = useBlueJStore();
+  const { detectSystem, activeTab, setActiveTab, diagnosticDone, setDiagnosticDone, tutorialDone, setTutorialDone } = useBlueJStore();
   const [showTutorial, setShowTutorial] = useState(false);
 
   useEffect(() => {
     detectSystem();
   }, [detectSystem]);
 
-  // Auto-launch tutorial after diagnostic for first-time users
   const handleDiagnosticComplete = () => {
     setDiagnosticDone(true);
     if (!tutorialDone) {
@@ -29,6 +33,16 @@ export default function SimulatorPage() {
     setShowTutorial(false);
     setTutorialDone(true);
   };
+
+  const desktopTabs = [
+    { id: 'chat' as const,         label: 'Chat',         icon: Terminal },
+    { id: 'ide' as const,          label: 'IDE',          icon: Code2 },
+    { id: 'goals' as const,        label: 'Goals',        icon: Target },
+    { id: 'achievements' as const, label: 'Achievements', icon: Award },
+    { id: 'wellness' as const,     label: 'Wellness',     icon: Heart },
+  ];
+
+  const isFullPanel = activeTab === 'goals' || activeTab === 'achievements' || activeTab === 'wellness';
 
   return (
     <div className="min-h-dvh h-dvh flex flex-col relative bg-background">
@@ -44,25 +58,53 @@ export default function SimulatorPage() {
       <HardwareBanner />
       <HudHeader onOpenTutorial={() => setShowTutorial(true)} />
 
+      {/* Desktop tab bar */}
+      <div className="hidden md:flex items-center gap-1 px-4 pt-2 border-b border-primary/10 bg-background/60 relative z-10">
+        {desktopTabs.map(({ id, label, icon: Icon }) => (
+          <button
+            key={id}
+            onClick={() => setActiveTab(id)}
+            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-hud uppercase tracking-wider rounded-t-sm border-b-2 transition-all ${
+              activeTab === id
+                ? 'border-primary text-primary bg-primary/10'
+                : 'border-transparent text-primary/40 hover:text-primary/70'
+            }`}
+          >
+            <Icon className="w-3.5 h-3.5" />
+            {label}
+          </button>
+        ))}
+      </div>
+
       <main className="flex-1 overflow-hidden relative z-10 p-2 md:p-4 pb-14 md:pb-16 flex gap-4">
-        <div className={`w-full md:w-1/2 h-full ${activeTab === 'chat' ? 'block' : 'hidden md:block'}`}>
-          <ChatPanel />
-        </div>
-        <div className={`w-full md:w-1/2 h-full ${activeTab === 'ide' ? 'block' : 'hidden md:block'}`}>
-          <IdePanel />
-        </div>
+        {isFullPanel ? (
+          <div className="w-full h-full">
+            {activeTab === 'goals' && <DailyGoals />}
+            {activeTab === 'achievements' && <AchievementsPanel />}
+            {activeTab === 'wellness' && <WellnessPanel />}
+          </div>
+        ) : (
+          <>
+            <div className={`w-full md:w-1/2 h-full ${activeTab === 'chat' ? 'block' : 'hidden md:block'}`}>
+              <ChatPanel />
+            </div>
+            <div className={`w-full md:w-1/2 h-full ${activeTab === 'ide' ? 'block' : 'hidden md:block'}`}>
+              <IdePanel />
+            </div>
+          </>
+        )}
       </main>
 
       <HardwareStrip />
 
-      {/* Diagnostic Sequence — shown on every fresh session load */}
+      <UnlockToast />
+
       <AnimatePresence>
         {!diagnosticDone && (
           <DiagnosticSequence onComplete={handleDiagnosticComplete} />
         )}
       </AnimatePresence>
 
-      {/* Tutorial — auto on first visit, or triggered via header button */}
       <TutorialOverlay open={showTutorial} onClose={handleTutorialClose} />
     </div>
   );

@@ -6,7 +6,7 @@ import {
   userProgressTable,
 } from "@workspace/db";
 import { eq, notInArray, inArray } from "drizzle-orm";
-import { openai } from "@workspace/integrations-openai-ai-server";
+import { getOpenAIClient } from "./openai-client.js";
 
 const router: IRouter = Router();
 
@@ -150,7 +150,8 @@ router.post("/", async (req, res) => {
       "Be dry, precise, and British. End with one hardware-specific recommendation.",
     ].join(" ");
 
-    const jResponse = await openai.chat.completions.create({
+    const aiClient = getOpenAIClient(req.headers);
+    const jResponse = await aiClient.chat.completions.create({
       model: "gpt-4o-mini",
       messages: [
         {

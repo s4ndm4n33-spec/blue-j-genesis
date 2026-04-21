@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { openai } from "@workspace/integrations-openai-ai-server";
+import { getOpenAIClient } from "./openai-client.js";
 
 const router: IRouter = Router();
 
@@ -57,7 +57,8 @@ router.post("/", async (req, res) => {
 
     const userPrompt = `Apply the Five Masters optimization to this ${language} code. Focus on memory efficiency and output performance:\n\n${code}`;
 
-    const response = await openai.chat.completions.create({
+    const aiClient = getOpenAIClient(req.headers);
+    const response = await aiClient.chat.completions.create({
       model: "gpt-4o-mini",
       messages: [
         { role: "system", content: FIVE_MASTERS_OPTIMIZE(language) },

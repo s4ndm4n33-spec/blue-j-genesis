@@ -64,7 +64,7 @@ interface BlueJState {
   hardwareMonitorEnabled: boolean;
   hardwarePermissionGranted: boolean | null;
   hardwareInfo: HardwareInfo;
-  activeTab: 'chat' | 'ide';
+  activeTab: 'chat' | 'ide' | 'goals' | 'achievements' | 'wellness';
   myCode: string;
   learnerMode: LearnerMode;
   diagnosticDone: boolean;
@@ -82,7 +82,7 @@ interface BlueJState {
   setHardwareMonitorEnabled: (enabled: boolean) => void;
   grantHardwarePermission: () => void;
   denyHardwarePermission: () => void;
-  setActiveTab: (tab: 'chat' | 'ide') => void;
+  setActiveTab: (tab: 'chat' | 'ide' | 'goals' | 'achievements' | 'wellness') => void;
   setMyCode: (code: string) => void;
   setLearnerMode: (mode: LearnerMode) => void;
   cycleLearnerMode: () => void;
@@ -99,6 +99,8 @@ interface BlueJState {
   saveToPortfolio: (name: string, notes?: string) => void;
   loadFromPortfolio: (id: string) => void;
   deleteFromPortfolio: (id: string) => void;
+  userApiKey: string;
+  setUserApiKey: (key: string) => void;
 }
 
 function detectOS(): OperatingSystem {
@@ -135,8 +137,10 @@ export const useBlueJStore = create<BlueJState>()(
       }],
       isTyping: false,
       portfolio: [],
+      userApiKey: '',
 
       setConversationId: (id) => set({ conversationId: id }),
+      setUserApiKey: (key) => set({ userApiKey: key }),
       setSimHardwareProfile: (p) => set({ simHardwareProfile: p }),
       setSelectedLanguage: (lang) => set({ selectedLanguage: lang }),
       setSelectedOs: (os) => set({ selectedOs: os }),
@@ -250,6 +254,7 @@ export const useBlueJStore = create<BlueJState>()(
         tutorialDone: state.tutorialDone,
         portfolio: state.portfolio,
         chapterSummaries: state.chapterSummaries,
+        userApiKey: state.userApiKey,
       })
     }
   )

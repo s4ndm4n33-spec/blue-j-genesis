@@ -82,6 +82,23 @@ All routes prefixed with `/api`:
 - ANTI-ULTRON safety protocol + Asimov's Laws hardwired
 - Fully responsive: mobile-first, works on all screen sizes
 
+## Gamification (localStorage via Zustand)
+
+- **XP & Levels**: Earned for chat questions, lines written, portfolio saves, mode usage. XP bar in HUD header.
+- **Achievements**: 15+ achievements (Coding Pilgrim, Speed Coder, Night Owl, Polyglot, etc.)
+- **Daily Goals**: Reset at midnight — chat questions, code lines, portfolio saves, wellness tasks
+- **Streaks**: Daily login streaks with recovery tokens
+- **Wellness tracking**: Water intake, stretches, eye rest, mood, Pomodoro timer, coding session timer
+- **Panels**: Goals tab, Achievements tab, Wellness tab in simulator
+
+## BYOK (Bring Your Own Key)
+
+- Default: Replit AI integration (no user key needed, billed to Replit credits)
+- Optional: User can enter their own OpenAI API key in Settings (gear icon in HUD header)
+- Key stored in localStorage, sent as `x-openai-key` request header
+- Server detects BYOK header — uses user's key + standard OpenAI API (gpt-4o, tts-1) instead of Replit proxy
+- BYOK indicator: header shows yellow key icon when custom key is active
+
 ## TypeScript & Composite Projects
 
 Every package extends `tsconfig.base.json` which sets `composite: true`.

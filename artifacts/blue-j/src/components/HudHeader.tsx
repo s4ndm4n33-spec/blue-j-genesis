@@ -1,8 +1,10 @@
 import { useState } from 'react';
 import { useBlueJStore, LEARNER_MODES, type OperatingSystem, type ProgrammingLanguage } from '@/lib/store';
-import { Monitor, Terminal, Code2, ShieldAlert, ShieldCheck, GraduationCap, HelpCircle } from 'lucide-react';
+import { useProgressStore, xpForNextLevel, xpProgressInLevel } from '@/lib/progress-store';
+import { Terminal, Code2, ShieldAlert, ShieldCheck, GraduationCap, HelpCircle, Target, Award, Heart, Settings, Key } from 'lucide-react';
 import { Tooltip } from './Tooltip';
 import { HelpOverlay } from './HelpOverlay';
+import { SettingsModal } from './SettingsModal';
 
 interface HudHeaderProps {
   onOpenTutorial?: () => void;
@@ -16,9 +18,16 @@ export function HudHeader({ onOpenTutorial }: HudHeaderProps) {
     hardwarePermissionGranted,
     activeTab, setActiveTab,
     learnerMode, cycleLearnerMode,
+    userApiKey,
   } = useBlueJStore();
 
   const [showHelp, setShowHelp] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+
+  const { stats } = useProgressStore();
+  const levelProgress = xpProgressInLevel(stats.totalXp, stats.level);
+  const levelTarget = xpForNextLevel(stats.level);
+  const xpPct = Math.min((levelProgress / levelTarget) * 100, 100);
 
   const languages: { id: ProgrammingLanguage; label: string; tip: string }[] = [
     { id: 'python', label: 'PY', tip: 'Python 3.x — recommended for beginners and ML work' },
@@ -59,7 +68,7 @@ export function HudHeader({ onOpenTutorial }: HudHeaderProps) {
               <Tooltip content="Chat with J." position="bottom">
                 <button
                   onClick={() => setActiveTab('chat')}
-                  className={`px-3 py-1 text-xs font-hud rounded-sm transition-colors ${activeTab === 'chat' ? 'bg-primary/20 text-primary' : 'text-primary/50'}`}
+                  className={`px-2.5 py-1 text-xs font-hud rounded-sm transition-colors ${activeTab === 'chat' ? 'bg-primary/20 text-primary' : 'text-primary/50'}`}
                 >
                   <Terminal className="w-4 h-4" />
                 </button>
@@ -67,9 +76,33 @@ export function HudHeader({ onOpenTutorial }: HudHeaderProps) {
               <Tooltip content="IDE / Code Editor" position="bottom">
                 <button
                   onClick={() => setActiveTab('ide')}
-                  className={`px-3 py-1 text-xs font-hud rounded-sm transition-colors ${activeTab === 'ide' ? 'bg-primary/20 text-primary' : 'text-primary/50'}`}
+                  className={`px-2.5 py-1 text-xs font-hud rounded-sm transition-colors ${activeTab === 'ide' ? 'bg-primary/20 text-primary' : 'text-primary/50'}`}
                 >
                   <Code2 className="w-4 h-4" />
+                </button>
+              </Tooltip>
+              <Tooltip content="Daily Goals & XP" position="bottom">
+                <button
+                  onClick={() => setActiveTab('goals')}
+                  className={`px-2.5 py-1 text-xs font-hud rounded-sm transition-colors ${activeTab === 'goals' ? 'bg-primary/20 text-primary' : 'text-primary/50'}`}
+                >
+                  <Target className="w-4 h-4" />
+                </button>
+              </Tooltip>
+              <Tooltip content="Achievements" position="bottom">
+                <button
+                  onClick={() => setActiveTab('achievements')}
+                  className={`px-2.5 py-1 text-xs font-hud rounded-sm transition-colors ${activeTab === 'achievements' ? 'bg-primary/20 text-primary' : 'text-primary/50'}`}
+                >
+                  <Award className="w-4 h-4" />
+                </button>
+              </Tooltip>
+              <Tooltip content="Wellness" position="bottom">
+                <button
+                  onClick={() => setActiveTab('wellness')}
+                  className={`px-2.5 py-1 text-xs font-hud rounded-sm transition-colors ${activeTab === 'wellness' ? 'bg-primary/20 text-primary' : 'text-primary/50'}`}
+                >
+                  <Heart className="w-4 h-4" />
                 </button>
               </Tooltip>
             </div>
@@ -159,16 +192,30 @@ export function HudHeader({ onOpenTutorial }: HudHeaderProps) {
                 <HelpCircle className="w-4 h-4" />
               </button>
             </Tooltip>
+
+            {/* Settings Button */}
+            <Tooltip content={userApiKey ? 'Settings — custom OpenAI key active' : 'Settings — API key, preferences'} position="bottom">
+              <button
+                onClick={() => setShowSettings(true)}
+                className={`p-1.5 min-h-[32px] min-w-[32px] rounded-sm border transition-all flex items-center justify-center ${userApiKey ? 'border-yellow-500/50 bg-yellow-500/10 text-yellow-400' : 'border-primary/20 hover:border-primary/50 hover:bg-primary/10 text-primary/50 hover:text-primary'}`}
+              >
+                {userApiKey ? <Key className="w-4 h-4" /> : <Settings className="w-4 h-4" />}
+              </button>
+            </Tooltip>
           </div>
         </div>
 
-        {/* Progress Bar */}
-        <div className="w-full h-1 bg-secondary relative">
-          <div className="absolute top-0 left-0 h-full bg-primary glow-border w-1/6 transition-all duration-1000 ease-out"></div>
+        {/* XP Progress Bar */}
+        <div className="w-full h-1 bg-secondary relative" title={`LVL ${stats.level} — ${levelProgress}/${levelTarget} XP`}>
+          <div
+            className="absolute top-0 left-0 h-full bg-primary glow-border transition-all duration-1000 ease-out"
+            style={{ width: `${xpPct}%` }}
+          />
         </div>
       </header>
 
       <HelpOverlay open={showHelp} onClose={() => setShowHelp(false)} />
+      {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
     </>
   );
 }

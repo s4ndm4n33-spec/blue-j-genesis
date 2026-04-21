@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useBlueJStore } from "@/lib/store";
 
 export interface UserProgress {
   sessionId: string;
@@ -68,9 +69,13 @@ export function useCompleteTask() {
 export function useTextToSpeech() {
   return useMutation({
     mutationFn: async ({ data }: { data: TtsRequestBody }): Promise<TtsResponse> => {
+      const userApiKey = useBlueJStore.getState().userApiKey;
       const res = await fetch('/api/bluej/tts', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(userApiKey ? { 'x-openai-key': userApiKey } : {}),
+        },
         body: JSON.stringify(data)
       });
       if (!res.ok) throw new Error('TTS Failed');

@@ -1,6 +1,7 @@
 import { useCallback } from 'react';
 import { useBlueJStore, type ChatMessage } from '@/lib/store';
 import { useTextToSpeech } from '@/hooks/use-bluej-api';
+import { useProgressStore } from '@/lib/progress-store';
 
 export type { ChatMessage };
 
@@ -12,8 +13,10 @@ export function useChatStream() {
     hardwareInfo, learnerMode,
     messages, isTyping,
     addMessage, updateLastAssistantMessage, setIsTyping, addSystemMessage, clearMessages, addChapterSummary,
+    userApiKey,
   } = useBlueJStore();
 
+  const { trackEvent, trackLanguageUsed } = useProgressStore();
   const ttsMutation = useTextToSpeech();
 
   const sendMessage = useCallback(async (
@@ -37,7 +40,10 @@ export function useChatStream() {
     try {
       const response = await fetch(`/api/bluej/chat`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(userApiKey ? { 'x-openai-key': userApiKey } : {}),
+        },
         body: JSON.stringify({
           sessionId,
           message: content,
@@ -105,6 +111,11 @@ export function useChatStream() {
 
       setIsTyping(false);
 
+      if (assistantContent) {
+        trackEvent('chat');
+        trackLanguageUsed(selectedLanguage);
+      }
+
       if (assistantContent && onAudioReceived) {
         const textForSpeech = assistantContent.replace(/```[\s\S]*?```/g, " [Code Block] ");
         ttsMutation.mutate({ data: { text: textForSpeech, voice: 'echo' } }, {
@@ -124,8 +135,9 @@ export function useChatStream() {
     }
   }, [
     sessionId, conversationId, selectedLanguage, selectedOs,
-    hardwareInfo, learnerMode, setConversationId,
-    addMessage, updateLastAssistantMessage, setIsTyping, addSystemMessage, clearMessages, addChapterSummary, ttsMutation
+    hardwareInfo, learnerMode, setConversationId, userApiKey,
+    addMessage, updateLastAssistantMessage, setIsTyping, addSystemMessage, clearMessages, addChapterSummary,
+    ttsMutation, trackEvent, trackLanguageUsed
   ]);
 
   return { messages, isTyping, sendMessage, addSystemMessage };

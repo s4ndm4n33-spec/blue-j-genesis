@@ -1,16 +1,32 @@
 import { Router, type IRouter } from "express";
 import { textToSpeech } from "@workspace/integrations-openai-ai-server/audio";
 import { TextToSpeechBody } from "@workspace/api-zod";
+import { getOpenAIClient } from "./openai-client.js";
 
 const router: IRouter = Router();
 
 router.post("/", async (req, res) => {
   try {
     const { text, voice = "echo" } = TextToSpeechBody.parse(req.body);
+    const userKey = req.headers["x-openai-key"];
+    const isByok = typeof userKey === "string" && userKey.startsWith("sk-");
 
-    const audioBuffer = await textToSpeech(text, voice as "alloy" | "echo" | "fable" | "onyx" | "nova" | "shimmer", "mp3");
+    let audioBuffer: Buffer;
+
+    if (isByok) {
+      const client = getOpenAIClient(req.headers);
+      const mp3 = await client.audio.speech.create({
+        model: "tts-1",
+        input: text,
+        voice: voice as "alloy" | "echo" | "fable" | "onyx" | "nova" | "shimmer",
+        response_format: "mp3",
+      });
+      audioBuffer = Buffer.from(await mp3.arrayBuffer());
+    } else {
+      audioBuffer = await textToSpeech(text, voice as "alloy" | "echo" | "fable" | "onyx" | "nova" | "shimmer", "mp3");
+    }
+
     const base64 = audioBuffer.toString("base64");
-
     res.json({ audio: base64, format: "mp3" });
   } catch (err) {
     req.log.error({ err }, "TTS error");
