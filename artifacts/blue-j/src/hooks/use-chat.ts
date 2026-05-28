@@ -141,10 +141,14 @@ export function useChatStream() {
     } catch (err) {
       console.error("Chat error", err);
       setIsTyping(false);
+      const errMsg = String(err);
+      const isQuota = errMsg.includes("quota") || errMsg.includes("exceeded") || errMsg.includes("503") || errMsg.includes("spend limit");
       addMessage({
         id: `err-${Date.now()}`,
         role: 'system',
-        content: "ERROR: Connection to J. interrupted. ULTRON protocol failsafe engaged.",
+        content: isQuota
+          ? "AI service quota exceeded. Open Settings (gear icon) and add your OpenAI API key to continue."
+          : "ERROR: Connection to J. interrupted. ULTRON protocol failsafe engaged.",
         timestamp: Date.now()
       });
     }

@@ -408,8 +408,14 @@ router.post("/", async (req, res) => {
     res.end();
   } catch (err) {
     req.log.error({ err }, "Chat error");
+    const errMsg = err instanceof Error ? err.message : "";
+    const isQuota = errMsg.includes("spend limit") || errMsg.includes("quota") || errMsg.includes("exceeded") || (err as any)?.code === "FREE_TIER_BUDGET_EXCEEDED";
     if (!res.headersSent) {
-      res.status(500).json({ error: "Chat failed" });
+      if (isQuota) {
+        res.status(503).json({ error: "AI service unavailable — monthly quota exceeded. Add your own API key in Settings (gear icon) to continue.", code: "QUOTA_EXCEEDED" });
+      } else {
+        res.status(500).json({ error: "Chat failed" });
+      }
     } else {
       res.write(`data: ${JSON.stringify({ error: "Internal error", done: true })}\n\n`);
       res.end();
