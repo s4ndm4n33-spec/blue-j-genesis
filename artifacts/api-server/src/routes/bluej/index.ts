@@ -8,6 +8,7 @@ import simulateRouter from "./simulate.js";
 import optimizeRouter from "./optimize.js";
 import diagnosticRouter from "./diagnostic.js";
 import githubRouter from "./github.js";
+import gitRouter from "./git.js";
 import executeRouter from "./execute.js";
 import exportRouter from "./export.js";
 
@@ -22,6 +23,7 @@ router.use("/simulate", simulateRouter);
 router.use("/optimize", optimizeRouter);
 router.use("/diagnostic", diagnosticRouter);
 router.use("/github", githubRouter);
+router.use("/git", gitRouter);
 router.use("/execute", executeRouter);
 router.use("/export", exportRouter);
 

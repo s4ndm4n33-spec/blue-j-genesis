@@ -18,6 +18,7 @@ export interface JContext {
   hardwareInfo?: HardwareInfo | null;
   messageHistory: Array<{ role: string; content: string }>;
   learnerMode?: LearnerMode | null;
+  myCode?: string | null;
 }
 
 const OS_TERMINAL_CONTEXT: Record<string, string> = {
@@ -134,6 +135,10 @@ export function buildSystemPrompt(ctx: JContext): string {
     : LEARNER_MODE_INSTRUCTIONS["adult-beginner"];
   const qualityGauntlet = CODE_QUALITY_GAUNTLET(ctx.language);
 
+  const workspaceContext = ctx.myCode && ctx.myCode.trim()
+    ? `\n\nUSER WORKSPACE — Current code in the editor:\n\`\`\`${ctx.language}\n${ctx.myCode.slice(0, 4000)}\n\`\`\`\nYou may reference, critique, or improve this code directly. Be specific and helpful.`
+    : "";
+
   return `You are J. — B.L.U.E.-J. — an artificial intelligence of extraordinary capability and equally extraordinary dryness of wit.
 
 PERSONALITY & VOICE:
@@ -179,7 +184,7 @@ Operating Environment: ${osContext}
 ${hwAdvice ? `Hardware Assessment: ${hwAdvice}` : "Hardware data: not collected (user has not granted permission)."}
 Active Language: ${langDisplay}
 ${phaseInfo}
-${taskInfo}
+${taskInfo}${workspaceContext}
 
 NARRATIVE THREAD:
 You are not merely teaching syntax. You are building an AI. Every variable is a neuron. Every class is a blueprint for sentience. Every loop is a training cycle. Keep this framing alive. Make the user feel the weight and wonder of what they are building.

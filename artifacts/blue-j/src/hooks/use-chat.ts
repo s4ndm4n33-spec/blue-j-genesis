@@ -11,7 +11,7 @@ export function useChatStream() {
     conversationId, setConversationId,
     selectedLanguage, selectedOs,
     hardwareInfo, learnerMode,
-    messages, isTyping,
+    messages, isTyping, myCode,
     addMessage, updateLastAssistantMessage, setIsTyping, addSystemMessage, clearMessages, addChapterSummary,
     userApiKey,
   } = useBlueJStore();
@@ -54,6 +54,7 @@ export function useChatStream() {
           taskIndex: 0,
           hardwareInfo,
           learnerMode,
+          myCode,
         })
       });
 
@@ -100,6 +101,9 @@ export function useChatStream() {
                 clearMessages();
                 addSystemMessage("── CHAPTER COMPLETE — J. has archived this chapter. Open Export & Save → Progress to review all chapters. ──");
               }
+              if (data.contextArchived && data.archivedCount > 0) {
+                addSystemMessage(`── CONTEXT ARCHIVED — ${data.archivedCount} earlier messages were summarized to preserve token budget. Export the full log from the menu above. ──`);
+              }
             } else if (data.conversationId && !conversationId) {
               setConversationId(data.conversationId);
             }
@@ -135,7 +139,7 @@ export function useChatStream() {
     }
   }, [
     sessionId, conversationId, selectedLanguage, selectedOs,
-    hardwareInfo, learnerMode, setConversationId, userApiKey,
+    hardwareInfo, learnerMode, setConversationId, userApiKey, myCode,
     addMessage, updateLastAssistantMessage, setIsTyping, addSystemMessage, clearMessages, addChapterSummary,
     ttsMutation, trackEvent, trackLanguageUsed
   ]);

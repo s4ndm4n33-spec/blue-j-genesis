@@ -173,4 +173,5 @@ export const ChatWithJBody = zod.object({
       platform: zod.string().nullish(),
     })
     .optional(),
+  myCode: zod.string().nullish().optional(),
 });

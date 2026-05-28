@@ -10,9 +10,10 @@ import { TutorialOverlay } from '@/components/TutorialOverlay';
 import { DailyGoals } from '@/components/DailyGoals';
 import { AchievementsPanel } from '@/components/AchievementsPanel';
 import { WellnessPanel } from '@/components/WellnessPanel';
+import { GitPanel } from '@/components/GitPanel';
 import { UnlockToast } from '@/components/UnlockToast';
 import { AnimatePresence } from 'framer-motion';
-import { Terminal, Code2, Target, Award, Heart } from 'lucide-react';
+import { Terminal, Code2, GitBranch, Target, Award, Heart } from 'lucide-react';
 
 export default function SimulatorPage() {
   const { detectSystem, activeTab, setActiveTab, diagnosticDone, setDiagnosticDone, tutorialDone, setTutorialDone } = useBlueJStore();
@@ -37,12 +38,13 @@ export default function SimulatorPage() {
   const desktopTabs = [
     { id: 'chat' as const,         label: 'Chat',         icon: Terminal },
     { id: 'ide' as const,          label: 'IDE',          icon: Code2 },
+    { id: 'git' as const,          label: 'Git',          icon: GitBranch },
     { id: 'goals' as const,        label: 'Goals',        icon: Target },
     { id: 'achievements' as const, label: 'Achievements', icon: Award },
     { id: 'wellness' as const,     label: 'Wellness',     icon: Heart },
   ];
 
-  const isFullPanel = activeTab === 'goals' || activeTab === 'achievements' || activeTab === 'wellness';
+  const isFullPanel = activeTab === 'goals' || activeTab === 'achievements' || activeTab === 'wellness' || activeTab === 'git';
 
   return (
     <div className="min-h-dvh h-dvh flex flex-col relative bg-background">
@@ -82,6 +84,7 @@ export default function SimulatorPage() {
             {activeTab === 'goals' && <DailyGoals />}
             {activeTab === 'achievements' && <AchievementsPanel />}
             {activeTab === 'wellness' && <WellnessPanel />}
+            {activeTab === 'git' && <GitPanel />}
           </div>
         ) : (
           <>

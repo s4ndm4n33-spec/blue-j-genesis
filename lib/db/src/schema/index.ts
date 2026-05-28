@@ -20,3 +20,4 @@
 export * from "./conversations";
 export * from "./messages";
 export * from "./user-progress";
+export * from "./git-repos";

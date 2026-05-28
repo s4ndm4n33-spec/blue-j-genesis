@@ -10,6 +10,7 @@ export function UnlockToast() {
       const timer = setTimeout(clearNewUnlocks, 4000);
       return () => clearTimeout(timer);
     }
+    return undefined;
   }, [newUnlocks, clearNewUnlocks]);
 
   const unlockId = newUnlocks[0];

@@ -64,7 +64,7 @@ interface BlueJState {
   hardwareMonitorEnabled: boolean;
   hardwarePermissionGranted: boolean | null;
   hardwareInfo: HardwareInfo;
-  activeTab: 'chat' | 'ide' | 'goals' | 'achievements' | 'wellness';
+  activeTab: 'chat' | 'ide' | 'git' | 'goals' | 'achievements' | 'wellness';
   myCode: string;
   learnerMode: LearnerMode;
   diagnosticDone: boolean;
@@ -82,7 +82,7 @@ interface BlueJState {
   setHardwareMonitorEnabled: (enabled: boolean) => void;
   grantHardwarePermission: () => void;
   denyHardwarePermission: () => void;
-  setActiveTab: (tab: 'chat' | 'ide' | 'goals' | 'achievements' | 'wellness') => void;
+  setActiveTab: (tab: 'chat' | 'ide' | 'git' | 'goals' | 'achievements' | 'wellness') => void;
   setMyCode: (code: string) => void;
   setLearnerMode: (mode: LearnerMode) => void;
   cycleLearnerMode: () => void;

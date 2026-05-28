@@ -2,6 +2,7 @@ import { Router, type IRouter } from "express";
 import { getOpenAIClient } from "./openai-client.js";
 import type OpenAI from "openai";
 import { db } from "@workspace/db";
+import { openai as defaultOpenAI } from "@workspace/integrations-openai-ai-server";
 import { conversations as conversationsTable, messages as messagesTable, userProgressTable } from "@workspace/db";
 import { ChatWithJBody } from "@workspace/api-zod";
 import { eq } from "drizzle-orm";
@@ -97,7 +98,7 @@ Respond ONLY in valid JSON (no markdown, no explanation):
 {"passed": true|false, "violations": ["specific violation here"]}`;
 
   try {
-    const resp = await openai.chat.completions.create({
+    const resp = await defaultOpenAI.chat.completions.create({
       model: "gpt-4o-mini",
       messages: [
         { role: "system", content: "You are a strict code quality auditor. Respond only in raw JSON." },
@@ -115,7 +116,6 @@ Respond ONLY in valid JSON (no markdown, no explanation):
       violations: Array.isArray(parsed.violations) ? parsed.violations : [],
     };
   } catch {
-    // Fail-open: audit service errors must never block J. from sending code
     return { passed: true, violations: [] };
   }
 }
@@ -176,7 +176,6 @@ async function generateWithGauntlet(
     const codeBlocks = extractCodeBlocks(fullResponse);
     if (codeBlocks.length === 0) return fullResponse;
 
-    // Validate ALL code blocks — aggregate violations across every block
     const allViolations: string[] = [];
     for (const block of codeBlocks) {
       const result = await runCodeGauntlet(block.code, block.lang || language);
@@ -190,12 +189,9 @@ async function generateWithGauntlet(
     }
 
     if (attempt >= maxRetries) {
-      // Retries exhausted — send the best available response with code intact.
-      // The gauntlet is a quality advisor; it must never prevent J. from writing code.
       return lastResponse;
     }
 
-    // Violations found — re-prompt J. to correct every flagged block
     const fixPrompt = [
       "Your code contains the following best-practice violations across one or more code blocks. Please revise your ENTIRE previous response to correct all of them:",
       "",
@@ -219,13 +215,11 @@ router.post("/", async (req, res) => {
     const aiClient = getOpenAIClient(req.headers);
     const isByok = typeof req.headers["x-openai-key"] === "string" && (req.headers["x-openai-key"] as string).startsWith("sk-");
     const body = ChatWithJBody.parse(req.body);
-    const { sessionId, message, language, os, phaseIndex, taskIndex, hardwareInfo } = body;
+    const { sessionId, message, language, os, phaseIndex, taskIndex, hardwareInfo, myCode } = body;
 
-    // Validated learnerMode (not raw cast)
     const learnerMode = parseLearnerMode(req.body.learnerMode);
     let conversationId = body.conversationId;
 
-    // Safety check
     const safety = buildSafetyCheck(message);
     if (!safety.safe) {
       res.setHeader("Content-Type", "text/event-stream");
@@ -236,7 +230,6 @@ router.post("/", async (req, res) => {
       return res.end();
     }
 
-    // Ensure conversation record
     if (!conversationId) {
       const phase = CURRICULUM[phaseIndex];
       const title = phase
@@ -270,11 +263,9 @@ router.post("/", async (req, res) => {
       hardwareInfo: hardwareInfo as { cpuCores?: number | null; ramGb?: number | null; platform?: string | null } | null | undefined,
       messageHistory,
       learnerMode,
+      myCode,
     });
 
-    // ── MILESTONE RESET ────────────────────────────────────────────────────
-    // When a conversation grows long, summarize it and start a fresh one.
-    // The summary is pinned as the first assistant message so J. remembers context.
     let milestoneReset = false;
     let chapterSummary = "";
     if (conversationId && messageHistory.length >= MILESTONE_MESSAGE_THRESHOLD) {
@@ -292,7 +283,6 @@ router.post("/", async (req, res) => {
       conversationId = newConvId;
       milestoneReset = true;
     }
-    // ───────────────────────────────────────────────────────────────────────
 
     await db.insert(messagesTable).values({
       conversationId,
@@ -300,7 +290,6 @@ router.post("/", async (req, res) => {
       content: message,
     });
 
-    // Fetch fresh history (may be the new conversation after milestone reset)
     const freshMessages = milestoneReset
       ? await db
           .select()
@@ -314,24 +303,80 @@ router.post("/", async (req, res) => {
       content: m.content,
     }));
 
+    // ── DETERMINISTIC TOKEN BUDGET ARCHIVING ──
     const HISTORY_TOKEN_BUDGET = 2_048;
     const estimateTokens = (text: string) => Math.ceil(text.length / 4);
 
-    const trimmedHistory: typeof freshHistory = [];
-    let usedTokens = estimateTokens(message);
-    for (let i = freshHistory.length - 1; i >= 0; i--) {
-      const msgTokens = estimateTokens(freshHistory[i].content);
-      if (usedTokens + msgTokens > HISTORY_TOKEN_BUDGET && trimmedHistory.length >= 2) {
-        break;
+    let totalTokens = 0;
+    for (const m of freshHistory) totalTokens += estimateTokens(m.content);
+    totalTokens += estimateTokens(message);
+
+    let contextArchived = false;
+    let archivedCount = 0;
+
+    if (totalTokens > HISTORY_TOKEN_BUDGET && freshHistory.length > 4) {
+      const toArchive: typeof freshHistory = [];
+      let remainingTokens = totalTokens;
+      for (let i = 0; i < freshHistory.length; i++) {
+        const msgTokens = estimateTokens(freshHistory[i].content);
+        if (remainingTokens - msgTokens <= HISTORY_TOKEN_BUDGET || freshHistory.length - toArchive.length <= 4) {
+          break;
+        }
+        toArchive.push(freshHistory[i]);
+        remainingTokens -= msgTokens;
       }
-      trimmedHistory.unshift(freshHistory[i]);
-      usedTokens += msgTokens;
+
+      if (toArchive.length > 0) {
+        archivedCount = toArchive.length;
+        const archiveTranscript = toArchive
+          .map((m) => `${m.role}: ${m.content.slice(0, 800)}`)
+          .join("\n---\n");
+
+        let summaryText = "Earlier conversation archived.";
+        try {
+          const sumResp = await aiClient.chat.completions.create({
+            model: "gpt-4o-mini",
+            max_completion_tokens: 200,
+            temperature: 0,
+            messages: [
+              {
+                role: "system",
+                content: "Summarize the following conversation transcript in 2-3 sentences. Include what coding concepts were discussed and any code that was written. Be deterministic and concise.",
+              },
+              { role: "user", content: archiveTranscript },
+            ],
+          });
+          summaryText = sumResp.choices[0]?.message?.content ?? summaryText;
+        } catch {
+          // Fail-safe: deterministic summarization is best-effort
+        }
+
+        const archiveContent = `[ARCHIVE SUMMARY] ${summaryText}`;
+        await db.insert(messagesTable).values({
+          conversationId,
+          role: "system",
+          content: archiveContent,
+        });
+        contextArchived = true;
+      }
     }
+
+    // Re-fetch history after possible archive insertion
+    const finalMessages = await db
+      .select()
+      .from(messagesTable)
+      .where(eq(messagesTable.conversationId, conversationId))
+      .orderBy(messagesTable.createdAt);
+
+    const finalHistory = finalMessages.map((m) => ({
+      role: m.role as "user" | "assistant" | "system",
+      content: m.content,
+    }));
 
     const chatMessages = [
       { role: "system" as const, content: systemPrompt },
-      ...trimmedHistory.map((m) => ({
-        role: m.role as "user" | "assistant",
+      ...finalHistory.map((m) => ({
+        role: m.role as "user" | "assistant" | "system",
         content: m.content,
       })),
       { role: "user" as const, content: message },
@@ -354,13 +399,12 @@ router.post("/", async (req, res) => {
     res.setHeader("Cache-Control", "no-cache");
     res.setHeader("Connection", "keep-alive");
 
-    // Chunk the response so it still feels streaming
     const CHUNK = 20;
     for (let i = 0; i < fullResponse.length; i += CHUNK) {
       res.write(`data: ${JSON.stringify({ content: fullResponse.slice(i, i + CHUNK) })}\n\n`);
     }
 
-    res.write(`data: ${JSON.stringify({ done: true, conversationId, milestoneReset, chapterSummary })}\n\n`);
+    res.write(`data: ${JSON.stringify({ done: true, conversationId, milestoneReset, chapterSummary, contextArchived, archivedCount })}\n\n`);
     res.end();
   } catch (err) {
     req.log.error({ err }, "Chat error");
@@ -370,6 +414,65 @@ router.post("/", async (req, res) => {
       res.write(`data: ${JSON.stringify({ error: "Internal error", done: true })}\n\n`);
       res.end();
     }
+  }
+});
+
+// ── EXPORT: full conversation as markdown ──
+router.get("/:conversationId/export", async (req, res) => {
+  try {
+    const convId = Number(req.params.conversationId);
+    if (Number.isNaN(convId)) {
+      res.status(400).json({ error: "Invalid conversation ID" });
+      return;
+    }
+
+    const convRows = await db
+      .select()
+      .from(conversationsTable)
+      .where(eq(conversationsTable.id, convId));
+    const conv = convRows[0];
+    if (!conv) {
+      res.status(404).json({ error: "Conversation not found" });
+      return;
+    }
+
+    const msgs = await db
+      .select()
+      .from(messagesTable)
+      .where(eq(messagesTable.conversationId, convId))
+      .orderBy(messagesTable.createdAt);
+
+    const lines = [
+      `# B.L.U.E.-J. Conversation Export`,
+      ``,
+      `**Title:** ${conv.title}`,
+      `**Exported:** ${new Date().toISOString()}`,
+      `**ID:** ${conv.id}`,
+      ``,
+      `---`,
+      ``,
+    ];
+
+    for (const m of msgs) {
+      const roleLabel = m.role === "user" ? "You" : m.role === "assistant" ? "J." : "System";
+      const ts = m.createdAt ? new Date(m.createdAt).toISOString() : "";
+      lines.push(`### ${roleLabel}  \`${ts}\``);
+      lines.push("");
+      lines.push(m.content);
+      lines.push("");
+      lines.push("---");
+      lines.push("");
+    }
+
+    const markdown = lines.join("\n");
+    const filename = `bluej-conversation-${conv.id}-${new Date().toISOString().slice(0, 10)}.md`;
+
+    res.setHeader("Content-Type", "text/markdown; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    res.send(markdown);
+  } catch (err) {
+    req.log.error({ err }, "Export error");
+    res.status(500).json({ error: "Export failed" });
   }
 });
 

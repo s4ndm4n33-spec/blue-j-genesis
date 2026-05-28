@@ -7,7 +7,7 @@ import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import {
   Copy, Play, Check, Download, Zap, ChevronDown, ChevronUp,
   Terminal as TerminalIcon, Loader2, X, Cpu, ChevronRight, Activity,
-  CheckCircle2, XCircle, FlaskConical, Bolt
+  CheckCircle2, XCircle, FlaskConical, Bolt, Sparkles, AlertTriangle
 } from 'lucide-react';
 import { useChatStream } from '@/hooks/use-chat';
 import { DownloadModal } from './DownloadModal';
@@ -89,6 +89,73 @@ export function IdePanel() {
   const [optimizedCode, setOptimizedCode] = useState<string | null>(null);
   const [optimizedExplanation, setOptimizedExplanation] = useState('');
   const [originalBeforeOptimize, setOriginalBeforeOptimize] = useState('');
+
+  // Inline code hygiene
+  interface HygieneTip {
+    severity: 'note' | 'warn' | 'error';
+    line: number;
+    message: string;
+    rule: string;
+  }
+  const [hygiene, setHygiene] = useState<HygieneTip[]>([]);
+  const [showHygiene, setShowHygiene] = useState(false);
+
+  const runHygieneCheck = (code: string, lang: string) => {
+    const tips: HygieneTip[] = [];
+    const lines = code.split('\n');
+    let indentLevel = 0;
+    let prevIndent = 0;
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      const stripped = line.trim();
+      if (!stripped || stripped.startsWith('#') || stripped.startsWith('//')) continue;
+      const ws = line.match(/^(\s*)/)?.[1] ?? '';
+      indentLevel = ws.length;
+      if (lang === 'python') {
+        if (stripped.includes('except') || stripped.includes('finally') || stripped.includes('else:') || stripped.includes('elif ')) {
+          if (indentLevel !== prevIndent - 4 && indentLevel !== prevIndent) {
+            tips.push({ severity: 'warn', line: i + 1, message: 'Dedent may not align with corresponding block', rule: 'Indentation' });
+          }
+        }
+        if (stripped.includes('print(')) {
+          tips.push({ severity: 'note', line: i + 1, message: 'Consider logging over print for production code', rule: 'Debug' });
+        }
+        if (/^\s*if\s+[^=]+==\s*True\b/.test(stripped)) {
+          tips.push({ severity: 'warn', line: i + 1, message: 'Redundant == True comparison', rule: 'Style' });
+        }
+      } else if (lang === 'javascript' || lang === 'typescript') {
+        if (/var\s+/.test(stripped)) {
+          tips.push({ severity: 'warn', line: i + 1, message: 'Use const or let instead of var', rule: 'Style' });
+        }
+        if (stripped.includes('console.log(')) {
+          tips.push({ severity: 'note', line: i + 1, message: 'Consider structured logging for production', rule: 'Debug' });
+        }
+        if (/==\s*(true|false|null|undefined)/.test(stripped) && !/===/.test(stripped)) {
+          tips.push({ severity: 'warn', line: i + 1, message: 'Use === instead of == for literal comparisons', rule: 'Safety' });
+        }
+      } else if (lang === 'cpp' || lang === 'c') {
+        if (/\busing namespace std;/.test(stripped)) {
+          tips.push({ severity: 'note', line: i + 1, message: 'Prefer explicit std:: qualification in headers', rule: 'Style' });
+        }
+        if (/\bnew\b/.test(stripped) && !/delete/.test(code)) {
+          tips.push({ severity: 'warn', line: i + 1, message: 'Raw new without matching delete — consider smart pointers', rule: 'Safety' });
+        }
+      }
+      prevIndent = indentLevel;
+    }
+    if (code.length > 0 && !code.trimEnd().endsWith('\n')) {
+      tips.push({ severity: 'note', line: lines.length, message: 'Missing trailing newline', rule: 'Style' });
+    }
+    setHygiene(tips);
+  };
+
+  useEffect(() => {
+    if (activeTab === 'my_code' && myCode.trim()) {
+      runHygieneCheck(myCode, selectedLanguage);
+    } else {
+      setHygiene([]);
+    }
+  }, [myCode, selectedLanguage, activeTab]);
 
   const terminalRef = useRef<HTMLDivElement>(null);
   const highlightLayerRef = useRef<HTMLDivElement>(null);
@@ -309,9 +376,9 @@ export function IdePanel() {
               <div className="relative w-full h-full" style={{ minHeight: '200px' }}>
                 <div
                   ref={highlightLayerRef}
-                  className="absolute inset-0 pointer-events-none overflow-hidden"
+                  className="absolute inset-0 pointer-events-none overflow-auto whitespace-pre"
                   aria-hidden="true"
-                  style={{ padding: EDITOR_PADDING, overflowY: 'hidden', overflowX: 'hidden' }}
+                  style={{ padding: EDITOR_PADDING }}
                 >
                   <SyntaxHighlighter
                     language={LANG_MAP[selectedLanguage] ?? selectedLanguage}
@@ -392,6 +459,47 @@ export function IdePanel() {
             )}
           </div>
 
+          {/* ── Hygiene Panel ── */}
+          <AnimatePresence>
+            {showHygiene && activeTab === 'my_code' && (
+              <motion.div
+                initial={{ height: 0 }}
+                animate={{ height: '28%' }}
+                exit={{ height: 0 }}
+                className="border-t border-cyan-500/20 bg-[#0d1117] flex flex-col overflow-hidden"
+              >
+                <div className="flex items-center justify-between px-3 py-1.5 border-b border-cyan-500/20 bg-cyan-900/10 flex-shrink-0">
+                  <div className="flex items-center gap-2 text-xs font-hud text-cyan-400/70 uppercase tracking-widest">
+                    <Sparkles className="w-3.5 h-3.5" />
+                    <span>Code Hygiene</span>
+                  </div>
+                  <button onClick={() => setShowHygiene(false)} className="text-primary/40 hover:text-primary transition-colors p-0.5">
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+                <div className="flex-1 overflow-auto p-3 font-mono text-xs space-y-1.5">
+                  {hygiene.map((tip, i) => (
+                    <div key={i} className={`flex items-start gap-2 text-[0.75rem] leading-relaxed ${
+                      tip.severity === 'error' ? 'text-red-400' : tip.severity === 'warn' ? 'text-yellow-400' : 'text-cyan-400'
+                    }`}>
+                      {tip.severity === 'error' ? <AlertTriangle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" /> :
+                        tip.severity === 'warn' ? <AlertTriangle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" /> :
+                          <Sparkles className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />}
+                      <div>
+                        <span className="opacity-50 mr-1.5">L{tip.line}</span>
+                        <span>{tip.message}</span>
+                        <span className="ml-2 opacity-40">[{tip.rule}]</span>
+                      </div>
+                    </div>
+                  ))}
+                  {hygiene.length === 0 && (
+                    <div className="text-primary/40 italic">No hygiene issues detected. Well done.</div>
+                  )}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
           {/* ── Terminal Panel ── */}
           <AnimatePresence>
             {showTerminal && (
@@ -412,12 +520,12 @@ export function IdePanel() {
                     {/* Mode badge */}
                     {execResult && !simResult && (
                       <div className={`flex items-center gap-1.5 text-[0.65rem] font-hud px-2 py-0.5 rounded uppercase tracking-wider border ${
-                        execResult.phase === 'blocked'
+                        (execResult as any).phase === 'blocked'
                           ? 'bg-red-900/30 border-red-500/30 text-red-400'
                           : 'bg-orange-900/30 border-orange-500/30 text-orange-400'
                       }`}>
                         <Bolt className="w-2.5 h-2.5" />
-                        <span>{execResult.phase === 'blocked' ? 'BLOCKED' : 'SERVER EXEC'}</span>
+                        <span>{(execResult as any).phase === 'blocked' ? 'BLOCKED' : 'SERVER EXEC'}</span>
                       </div>
                     )}
                     {simResult && !execResult && (
@@ -549,6 +657,22 @@ export function IdePanel() {
                 >
                   {optimizing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5" />}
                   <span className="hidden sm:inline">{optimizing ? 'Optimizing...' : 'Optimize'}</span>
+                </button>
+              </Tooltip>
+            )}
+
+            {/* Hygiene Toggle */}
+            {activeTab === 'my_code' && hygiene.length > 0 && (
+              <Tooltip content={`${hygiene.length} hygiene suggestion${hygiene.length > 1 ? 's' : ''}`} position="top">
+                <button
+                  onClick={() => setShowHygiene(v => !v)}
+                  className={`flex items-center gap-1.5 px-2.5 py-1.5 border rounded-sm transition-all text-xs font-hud uppercase tracking-wider ${
+                    showHygiene ? 'border-cyan-500/50 bg-cyan-500/10 text-cyan-400' : 'border-primary/20 text-primary/50 hover:text-primary/80'
+                  }`}
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Hygiene</span>
+                  <span className="text-[0.6rem] opacity-70">({hygiene.length})</span>
                 </button>
               </Tooltip>
             )}
