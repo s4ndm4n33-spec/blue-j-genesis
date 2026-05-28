@@ -6,15 +6,16 @@ import { useProgressStore } from '@/lib/progress-store';
 export type { ChatMessage };
 
 export function useChatStream() {
+  const store = useBlueJStore();
   const {
     sessionId,
     conversationId, setConversationId,
     selectedLanguage, selectedOs,
     hardwareInfo, learnerMode,
-    messages, isTyping, myCode,
+    messages, isTyping,
     addMessage, updateLastAssistantMessage, setIsTyping, addSystemMessage, clearMessages, addChapterSummary,
     userApiKey,
-  } = useBlueJStore();
+  } = store;
 
   const { trackEvent, trackLanguageUsed } = useProgressStore();
   const ttsMutation = useTextToSpeech();
@@ -22,7 +23,8 @@ export function useChatStream() {
   const sendMessage = useCallback(async (
     content: string,
     onAudioReceived?: (b64: string, fmt: string) => void,
-    isVoice = false
+    isVoice = false,
+    forceShareWorkspace = false
   ) => {
     if (!content.trim()) return;
 
@@ -36,6 +38,15 @@ export function useChatStream() {
 
     addMessage(userMsg);
     setIsTyping(true);
+
+    // Detect explicit workspace-share intent or keyword recall
+    const shareKeywords = /\b(look at my code|check my code|review my code|see my code|what's wrong with my code|fix my code|optimize my code|workspace code|my code is|the code in my editor|share workspace)\b/i;
+    const recallKeywords = /\b(what about the code|the code you saw|my code earlier|the workspace|the editor code|that code)\b/i;
+    const messageHistory = messages.slice(-6);
+    const recentShare = messageHistory.some(m =>
+      m.role === 'user' && shareKeywords.test(m.content)
+    );
+    const shouldIncludeWorkspace = forceShareWorkspace || shareKeywords.test(content) || (recentShare && recallKeywords.test(content));
 
     try {
       const response = await fetch(`/api/bluej/chat`, {
@@ -54,7 +65,7 @@ export function useChatStream() {
           taskIndex: 0,
           hardwareInfo,
           learnerMode,
-          myCode,
+          ...(shouldIncludeWorkspace ? { myCode: useBlueJStore.getState().myCode } : {}),
         })
       });
 
@@ -139,10 +150,17 @@ export function useChatStream() {
     }
   }, [
     sessionId, conversationId, selectedLanguage, selectedOs,
-    hardwareInfo, learnerMode, setConversationId, userApiKey, myCode,
+    hardwareInfo, learnerMode, setConversationId, userApiKey,
     addMessage, updateLastAssistantMessage, setIsTyping, addSystemMessage, clearMessages, addChapterSummary,
     ttsMutation, trackEvent, trackLanguageUsed
   ]);
 
   return { messages, isTyping, sendMessage, addSystemMessage };
 }
+
+export type SendMessageFn = (
+  content: string,
+  onAudioReceived?: (b64: string, fmt: string) => void,
+  isVoice?: boolean,
+  forceShareWorkspace?: boolean
+) => void;

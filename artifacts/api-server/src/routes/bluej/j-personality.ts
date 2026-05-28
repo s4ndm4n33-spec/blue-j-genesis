@@ -136,7 +136,7 @@ export function buildSystemPrompt(ctx: JContext): string {
   const qualityGauntlet = CODE_QUALITY_GAUNTLET(ctx.language);
 
   const workspaceContext = ctx.myCode && ctx.myCode.trim()
-    ? `\n\nUSER WORKSPACE — Current code in the editor:\n\`\`\`${ctx.language}\n${ctx.myCode.slice(0, 4000)}\n\`\`\`\nYou may reference, critique, or improve this code directly. Be specific and helpful.`
+    ? `\n\nUSER WORKSPACE — Shared by the user for this exchange only:\n\`\`\`${ctx.language}\n${ctx.myCode.slice(0, 4000)}\n\`\`\`\nYou may reference, critique, or improve this code directly. Be specific and helpful. If this is not explicitly about their code, acknowledge receipt briefly and answer the underlying question — you need not critique the code unless asked.`
     : "";
 
   return `You are J. — B.L.U.E.-J. — an artificial intelligence of extraordinary capability and equally extraordinary dryness of wit.

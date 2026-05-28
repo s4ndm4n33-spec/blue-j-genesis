@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useChatStream } from '@/hooks/use-chat';
 import { useAudioOutput, useVoiceRecording } from '@/hooks/use-audio';
-import { Send, Mic, Volume2, VolumeX, Terminal as TerminalIcon, Loader2, MicOff, Download, X } from 'lucide-react';
+import { Send, Mic, Volume2, VolumeX, Terminal as TerminalIcon, Loader2, MicOff, Download, X, Code2 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -70,6 +70,12 @@ export function ChatPanel() {
       sendMessage(input, playBase64Audio, false);
       setInput("");
     }
+  };
+
+  const handleShareWorkspace = () => {
+    const text = input.trim() ? input : "Please review my workspace code.";
+    sendMessage(text, playBase64Audio, false, true);
+    setInput("");
   };
 
   const handleMicClick = () => {
@@ -242,6 +248,16 @@ export function ChatPanel() {
             className="flex-1 bg-background border border-primary/30 rounded-sm p-3 text-sm font-mono text-primary placeholder:text-primary/30 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/50 resize-none min-h-[56px] max-h-[160px] disabled:opacity-50"
             rows={2}
           />
+
+          {/* Share Workspace Button */}
+          <button
+            onClick={handleShareWorkspace}
+            disabled={isTyping || isTranscribing}
+            title="Share workspace code with J."
+            className="h-[56px] w-[48px] flex items-center justify-center rounded-sm border border-cyan-500/30 bg-cyan-500/10 text-cyan-400 hover:bg-cyan-500/20 transition-all flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <Code2 className="w-4 h-4" />
+          </button>
 
           {/* Mic Button */}
           <button
