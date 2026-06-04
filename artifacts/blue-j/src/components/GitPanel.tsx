@@ -320,7 +320,7 @@ export function GitPanel() {
               <textarea
                 value={fileContent}
                 onChange={e => setFileContent(e.target.value)}
-                className="flex-1 bg-[#1E1E1E] font-mono text-xs text-primary-foreground p-3 resize-none focus:outline-none overflow-auto whitespace-pre"
+                className="flex-1 bg-background font-mono text-xs text-primary p-3 resize-none focus:outline-none overflow-auto whitespace-pre"
                 spellCheck={false}
                 autoComplete="off"
                 autoCorrect="off"
@@ -328,14 +328,14 @@ export function GitPanel() {
               />
             </>
           ) : diffText ? (
-            <div className="flex-1 overflow-auto p-3 font-mono text-xs whitespace-pre text-primary-foreground">
+            <div className="flex-1 overflow-auto p-3 font-mono text-xs whitespace-pre text-primary">
               <div className="flex items-center gap-2 mb-2 text-[0.65rem] text-accent uppercase font-hud tracking-wider">
                 <Terminal className="w-3 h-3" /> Diff
               </div>
               {diffText || <span className="text-primary/30 italic">No changes</span>}
             </div>
           ) : statusText ? (
-            <div className="flex-1 overflow-auto p-3 font-mono text-xs whitespace-pre text-primary-foreground">
+            <div className="flex-1 overflow-auto p-3 font-mono text-xs whitespace-pre text-primary">
               <div className="flex items-center gap-2 mb-2 text-[0.65rem] text-accent uppercase font-hud tracking-wider">
                 <Terminal className="w-3 h-3" /> Status
               </div>
