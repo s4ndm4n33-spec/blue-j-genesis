@@ -152,10 +152,11 @@ export const useBlueJStore = create<BlueJState>()(
       setSimHardwareProfile: (p) => set({ simHardwareProfile: p }),
       setAgentModePassword: (password) => set({ agentModePassword: password }),
       unlockAgentMode: (password) => {
-        const { agentModePassword } = get();
-        const valid = agentModePassword === password;
-        if (valid) set({ agentModeUnlocked: true });
-        return valid;
+        // Backend already validated the password (admin or curriculum)
+        set({ agentModeUnlocked: true });
+        // Store the password as the user's personal password for future sessions
+        set({ agentModePassword: password });
+        return true;
       },
       setSelectedLanguage: (lang) => set({ selectedLanguage: lang }),
       setSelectedOs: (os) => set({ selectedOs: os }),
