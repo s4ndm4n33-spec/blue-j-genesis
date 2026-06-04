@@ -348,16 +348,41 @@ This log records the complete architectural history, working standards, and sess
 
 ---
 
+### Session 8: Documentation & Publish Prep (June 4, 2026)
+**Date**: 2026-06-04
+**Time Range**: 05:27 UTC
+
+| Commit | Time (UTC) | Description |
+|--------|------------|-------------|
+| `d3d35b9` | 07:01:24 (May 28) | Create project documentation and migration log files — comprehensive README.md (purpose, capabilities, limitations, deterministic build strategy) + MIGRATION_LOG.md (codebase, standards, sessions, signed personal note) |
+| `e7671f9` | 07:04:05 (May 28) | Bypass database diff check to resolve push errors — add `--force` flag to Drizzle Kit `push` script and `post-merge.sh` to skip disabled diff endpoint |
+| `213a5f8` | 07:20:58 (May 28) | Improve error messages for AI service limitations — backend returns 503 with quota message, frontend shows "add your API key in Settings" instead of cryptic ULTRON error |
+| `ea7f8e2` | 05:27:05 (Jun 4) | Reorder log entries to place personal note at the beginning of MIGRATION_LOG.md |
+
+**Key Decisions Made**:
+- README.md must include deterministic build strategy — step-by-step from empty directory to running app
+- Migration log must document sessions with timestamps, commit hashes, and key architectural decisions
+- Database push failures bypassed with `--force` rather than trying to fix the disabled Replit endpoint
+- Quota exceeded errors must be user-actionable: "add your key in Settings" with gear icon reference
+- Personal note moved to the beginning of the log — it sets the tone before the technical details
+
+**New Task Requests**:
+- README.md + MIGRATION_LOG.md (completed)
+- Reddit post copy for CS students at Maestro (completed)
+- Session reordering with personal note at the top (completed)
+
+---
+
 ## Commit Statistics
 
 | Metric | Count |
 |--------|-------|
-| Total Commits | 32 |
+| Total Commits | 36 |
 | Deployment Commits | 14 |
-| Feature Commits | 18 |
+| Feature Commits | 22 |
 | First Commit | 2026-03-28 01:50:29 UTC |
-| Latest Commit | 2026-05-28 06:48:41 UTC |
-| Development Span | 61 days |
-| Active Sessions | 7 |
+| Latest Commit | 2026-06-04 05:27:05 UTC |
+| Development Span | 68 days |
+| Active Sessions | 8 |
 
 ---
