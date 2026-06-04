@@ -112,4 +112,4 @@ Push DB: `pnpm --filter @workspace/db run push`
 React + Vite frontend. Main simulator UI. Entry: `src/main.tsx`. Pages: `src/pages/simulator.tsx`. Key components: HudHeader, ChatPanel, IdePanel, HardwareStrip, HardwareBanner.
 
 ### `artifacts/api-server` (`@workspace/api-server`)
-Express 5 API server. J.'s brain lives in `src/routes/bluej/`. Key files: `j-personality.ts` (system prompt builder, safety checks), `curriculum.ts` (all 6 phases and code snippets), `chat.ts` (streaming chat endpoint), `tts.ts` (voice endpoint), `progress.ts` (progress tracking).
+Express 5 API server. J.'s brain lives in `src/routes/bluej/`. Key files: `j-personality.ts` (system prompt builder, safety checks), `curriculum.ts` (all 6 phases and code snippets), `chat.ts` (streaming chat endpoint), `tts.ts` (voice endpoint), `progress.ts` (progress tracking), `agent.ts` (Development Agent Mode with OpenAI tool calling), `git.ts` (git operations).

@@ -1,0 +1,1 @@
+- [Agent Mode Git Integration](agent-git-integration.md) — Development Agent uses OpenAI function-calling to read, write, commit, and push files via the git panel.

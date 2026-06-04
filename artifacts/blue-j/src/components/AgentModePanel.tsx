@@ -13,7 +13,7 @@ interface AgentMessage {
 }
 
 export function AgentModePanel() {
-  const { agentModeUnlocked, unlockAgentMode, selectedLanguage, selectedOs } = useBlueJStore();
+  const { agentModeUnlocked, unlockAgentMode, selectedLanguage, selectedOs, sessionId } = useBlueJStore();
   const { stats } = useProgressStore();
 
   const [password, setPassword] = useState('');
@@ -87,6 +87,7 @@ export function AgentModePanel() {
           message: input,
           language: selectedLanguage,
           os: selectedOs,
+          sessionId,
           history: messages.slice(-10).map(m => ({ role: m.role, content: m.content }))
         })
       });
