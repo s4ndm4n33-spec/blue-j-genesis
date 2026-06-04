@@ -64,7 +64,7 @@ interface BlueJState {
   hardwareMonitorEnabled: boolean;
   hardwarePermissionGranted: boolean | null;
   hardwareInfo: HardwareInfo;
-  activeTab: 'chat' | 'ide' | 'git' | 'goals' | 'achievements' | 'wellness';
+  activeTab: 'chat' | 'ide' | 'git' | 'goals' | 'achievements' | 'wellness' | 'agent';
   myCode: string;
   learnerMode: LearnerMode;
   diagnosticDone: boolean;
@@ -82,7 +82,7 @@ interface BlueJState {
   setHardwareMonitorEnabled: (enabled: boolean) => void;
   grantHardwarePermission: () => void;
   denyHardwarePermission: () => void;
-  setActiveTab: (tab: 'chat' | 'ide' | 'git' | 'goals' | 'achievements' | 'wellness') => void;
+  setActiveTab: (tab: 'chat' | 'ide' | 'git' | 'goals' | 'achievements' | 'wellness' | 'agent') => void;
   setMyCode: (code: string) => void;
   setLearnerMode: (mode: LearnerMode) => void;
   cycleLearnerMode: () => void;
@@ -101,6 +101,12 @@ interface BlueJState {
   deleteFromPortfolio: (id: string) => void;
   userApiKey: string;
   setUserApiKey: (key: string) => void;
+
+  // Agent Mode (locked until curriculum complete or personal password)
+  agentModeUnlocked: boolean;
+  agentModePassword: string | null;
+  unlockAgentMode: (password: string) => boolean;
+  setAgentModePassword: (password: string) => void;
 }
 
 function detectOS(): OperatingSystem {
@@ -138,10 +144,19 @@ export const useBlueJStore = create<BlueJState>()(
       isTyping: false,
       portfolio: [],
       userApiKey: '',
+      agentModeUnlocked: false,
+      agentModePassword: null,
 
       setConversationId: (id) => set({ conversationId: id }),
       setUserApiKey: (key) => set({ userApiKey: key }),
       setSimHardwareProfile: (p) => set({ simHardwareProfile: p }),
+      setAgentModePassword: (password) => set({ agentModePassword: password }),
+      unlockAgentMode: (password) => {
+        const { agentModePassword } = get();
+        const valid = agentModePassword === password;
+        if (valid) set({ agentModeUnlocked: true });
+        return valid;
+      },
       setSelectedLanguage: (lang) => set({ selectedLanguage: lang }),
       setSelectedOs: (os) => set({ selectedOs: os }),
       setHardwareMonitorEnabled: (enabled) => set({ hardwareMonitorEnabled: enabled }),
@@ -255,6 +270,8 @@ export const useBlueJStore = create<BlueJState>()(
         portfolio: state.portfolio,
         chapterSummaries: state.chapterSummaries,
         userApiKey: state.userApiKey,
+        agentModeUnlocked: state.agentModeUnlocked,
+        agentModePassword: state.agentModePassword,
       })
     }
   )

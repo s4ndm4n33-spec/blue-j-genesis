@@ -114,7 +114,13 @@ router.post("/", async (req, res) => {
     });
   } catch (err) {
     req.log.error({ err }, "Simulation error");
-    res.status(500).json({ error: "Simulation failed" });
+    const errMsg = err instanceof Error ? err.message : "";
+    const isQuota = errMsg.includes("spend limit") || errMsg.includes("quota") || errMsg.includes("exceeded") || (err as any)?.code === "FREE_TIER_BUDGET_EXCEEDED";
+    if (isQuota) {
+      res.status(503).json({ error: "AI service unavailable — monthly quota exceeded. Add your own API key in Settings (gear icon) to continue.", code: "QUOTA_EXCEEDED" });
+    } else {
+      res.status(500).json({ error: "Simulation failed" });
+    }
   }
 });
 

@@ -68,9 +68,9 @@ function checkSafety(code: string, language: string): string | null {
 }
 
 // ─── Local execution ─────────────────────────────────────────────────────────
-const PYTHON_BIN = "/home/runner/.nix-profile/bin/python3";
-const GPP_BIN    = "/nix/store/q5qbngdpv0n9zgh42d3ssprj31cf779j-replit-runtime-path/bin/g++";
-const NODE_BIN   = process.execPath;
+const PYTHON_BIN = process.env.PYTHON_BIN || "/nix/store/flbj8bq2vznkcwss7sm0ky8rd0k6kar7-python-wrapped-0.1.0/bin/python3";
+const GPP_BIN    = process.env.GPP_BIN    || "/nix/store/b11ycf80cxi2iyrga8rkq1wzdinmax18-replit-runtime-path/bin/g++";
+const NODE_BIN   = process.env.NODE_BIN    || process.execPath;
 const EXEC_TIMEOUT_MS = 10_000;
 const MAX_OUTPUT_BYTES = 64 * 1024; // 64KB
 const TMP_DIR = "/tmp/bluej-exec";
@@ -89,8 +89,8 @@ function spawnProcess(cmd: string, args: string[]): Promise<{
 
     const proc = spawn(cmd, args, {
       env: {
-        // Minimal env — no credentials, no tokens
-        PATH: "/usr/local/bin:/usr/bin:/bin",
+        // Include full PATH so python3 resolves; strip secrets
+        PATH: process.env.PATH || "/usr/local/bin:/usr/bin:/bin",
         PYTHONDONTWRITEBYTECODE: "1",
         PYTHONIOENCODING: "utf-8",
         HOME: "/tmp",

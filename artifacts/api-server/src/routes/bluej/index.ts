@@ -11,6 +11,7 @@ import githubRouter from "./github.js";
 import gitRouter from "./git.js";
 import executeRouter from "./execute.js";
 import exportRouter from "./export.js";
+import agentRouter from "./agent.js";
 
 const router: IRouter = Router();
 
@@ -26,5 +27,6 @@ router.use("/github", githubRouter);
 router.use("/git", gitRouter);
 router.use("/execute", executeRouter);
 router.use("/export", exportRouter);
+router.use("/agent", agentRouter);
 
 export default router;

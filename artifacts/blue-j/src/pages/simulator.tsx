@@ -11,9 +11,10 @@ import { DailyGoals } from '@/components/DailyGoals';
 import { AchievementsPanel } from '@/components/AchievementsPanel';
 import { WellnessPanel } from '@/components/WellnessPanel';
 import { GitPanel } from '@/components/GitPanel';
+import { AgentModePanel } from '@/components/AgentModePanel';
 import { UnlockToast } from '@/components/UnlockToast';
 import { AnimatePresence } from 'framer-motion';
-import { Terminal, Code2, GitBranch, Target, Award, Heart } from 'lucide-react';
+import { Terminal, Code2, GitBranch, Target, Award, Heart, Bot } from 'lucide-react';
 
 export default function SimulatorPage() {
   const { detectSystem, activeTab, setActiveTab, diagnosticDone, setDiagnosticDone, tutorialDone, setTutorialDone } = useBlueJStore();
@@ -42,9 +43,10 @@ export default function SimulatorPage() {
     { id: 'goals' as const,        label: 'Goals',        icon: Target },
     { id: 'achievements' as const, label: 'Achievements', icon: Award },
     { id: 'wellness' as const,     label: 'Wellness',     icon: Heart },
+    { id: 'agent' as const,        label: 'Agent',        icon: Bot },
   ];
 
-  const isFullPanel = activeTab === 'goals' || activeTab === 'achievements' || activeTab === 'wellness' || activeTab === 'git';
+  const isFullPanel = activeTab === 'goals' || activeTab === 'achievements' || activeTab === 'wellness' || activeTab === 'git' || activeTab === 'agent';
 
   return (
     <div className="min-h-dvh h-dvh flex flex-col relative bg-background">
@@ -85,6 +87,7 @@ export default function SimulatorPage() {
             {activeTab === 'achievements' && <AchievementsPanel />}
             {activeTab === 'wellness' && <WellnessPanel />}
             {activeTab === 'git' && <GitPanel />}
+            {activeTab === 'agent' && <AgentModePanel />}
           </div>
         ) : (
           <>
