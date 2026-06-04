@@ -7,7 +7,7 @@ const router: IRouter = Router();
 const ADMIN_AGENT_PASSWORD = process.env.ADMIN_AGENT_PASSWORD || "";
 
 function generateCurriculumPassword(level: number): string | null {
-  return level >= 5 ? 'B' + (level * 7 + 13).toString(36).toUpperCase() : null;
+  return level >= 5 ? 'B' + (level * 7 + 13).toString(36).toUpperCase().padStart(3, '0') : null;
 }
 
 router.post("/unlock", async (req, res) => {

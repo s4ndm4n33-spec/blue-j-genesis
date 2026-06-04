@@ -33,7 +33,7 @@ export function AgentModePanel() {
   // Generate curriculum password from level
   const curriculumPassword = useCallback(() => {
     const level = stats.level;
-    const seed = level >= 5 ? 'B' + (level * 7 + 13).toString(36).toUpperCase() : null;
+    const seed = level >= 5 ? 'B' + (level * 7 + 13).toString(36).toUpperCase().padStart(3, '0') : null;
     return seed;
   }, [stats.level]);
 
