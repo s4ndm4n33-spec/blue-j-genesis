@@ -13,7 +13,7 @@ interface AgentMessage {
 }
 
 export function AgentModePanel() {
-  const { agentModeUnlocked, agentModePassword, unlockAgentMode, setAgentModePassword, selectedLanguage, selectedOs } = useBlueJStore();
+  const { agentModeUnlocked, unlockAgentMode, selectedLanguage, selectedOs } = useBlueJStore();
   const { stats } = useProgressStore();
 
   const [password, setPassword] = useState('');
@@ -30,21 +30,28 @@ export function AgentModePanel() {
 
   useEffect(() => { scrollToBottom(); }, [messages]);
 
-  // Generate curriculum password from session ID + level
+  // Generate curriculum password from level
   const curriculumPassword = useCallback(() => {
     const level = stats.level;
     const seed = level >= 5 ? 'B' + (level * 7 + 13).toString(36).toUpperCase() : null;
     return seed;
   }, [stats.level]);
 
-  const handleUnlock = () => {
+  const handleUnlock = async () => {
     setPasswordError('');
-    const curriculumPass = curriculumPassword();
-    const personalPass = agentModePassword;
-
-    if (password === curriculumPass || password === personalPass) {
-      const ok = unlockAgentMode(password);
-      if (ok) {
+    if (password.length < 4) {
+      setPasswordError('Password must be at least 4 characters.');
+      return;
+    }
+    try {
+      const resp = await fetch('/api/bluej/agent/unlock', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password, level: stats.level }),
+      });
+      const data = await resp.json();
+      if (data.unlocked) {
+        unlockAgentMode(password);
         setMessages([{
           id: 'welcome',
           role: 'agent',
@@ -52,24 +59,11 @@ export function AgentModePanel() {
           content: `Development Agent Mode activated. I am J. in agent configuration. State your objective and I will guide you through the development loop: intake, clarify, plan, act, verify, teach, close. I enforce the Five Masters and the Anti-Ultron protocol.`,
           timestamp: Date.now()
         }]);
+      } else {
+        setPasswordError('Invalid access key. Complete the curriculum or use your personal password.');
       }
-    } else {
-      setPasswordError('Invalid access key. Complete the curriculum or use your personal password.');
-    }
-  };
-
-  const handleSetPersonalPassword = () => {
-    if (password.length >= 4) {
-      setAgentModePassword(password);
-      setPasswordError('');
-      setMessages([{
-        id: 'sys',
-        role: 'system',
-        content: 'Personal password set. Use it to unlock Agent Mode on any device.',
-        timestamp: Date.now()
-      }]);
-    } else {
-      setPasswordError('Password must be at least 4 characters.');
+    } catch {
+      setPasswordError('Unlock failed. Please try again.');
     }
   };
 
@@ -192,7 +186,7 @@ export function AgentModePanel() {
             </p>
             <div className="text-xs text-primary/50 font-mono space-y-1">
               <p>• <span className="text-primary/70">Curriculum password</span> {curriculumPass ? `(“${curriculumPass}”)` : '(reach Level 5 to unlock)'}</p>
-              <p>• <span className="text-primary/70">Personal password</span> {agentModePassword ? '(set)' : '(not set)'}</p>
+              <p>• <span className="text-primary/70">Personal password</span> (set in Settings)</p>
             </div>
           </div>
 
@@ -210,20 +204,12 @@ export function AgentModePanel() {
                 <AlertTriangle className="w-3 h-3" /> {passwordError}
               </div>
             )}
-            <div className="flex gap-2">
-              <button
-                onClick={handleUnlock}
-                className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-primary/10 hover:bg-primary/20 border border-primary/30 text-primary rounded-sm text-xs font-hud uppercase tracking-wider transition-all"
-              >
-                <Unlock className="w-3 h-3" /> Unlock
-              </button>
-              <button
-                onClick={handleSetPersonalPassword}
-                className="px-3 py-2 bg-secondary/50 hover:bg-secondary border border-primary/20 text-primary/60 rounded-sm text-xs font-mono transition-all"
-              >
-                Set Personal
-              </button>
-            </div>
+            <button
+              onClick={handleUnlock}
+              className="w-full flex items-center justify-center gap-1.5 px-3 py-2 bg-primary/10 hover:bg-primary/20 border border-primary/30 text-primary rounded-sm text-xs font-hud uppercase tracking-wider transition-all"
+            >
+              <Unlock className="w-3 h-3" /> Unlock
+            </button>
           </div>
 
           <div className="border-t border-primary/10 pt-3 flex items-center gap-2 text-[0.6rem] font-mono text-primary/30">

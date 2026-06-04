@@ -4,6 +4,40 @@ import { buildSafetyCheck } from "./j-personality.js";
 
 const router: IRouter = Router();
 
+const ADMIN_AGENT_PASSWORD = process.env.ADMIN_AGENT_PASSWORD || "";
+
+function generateCurriculumPassword(level: number): string | null {
+  return level >= 5 ? 'B' + (level * 7 + 13).toString(36).toUpperCase() : null;
+}
+
+router.post("/unlock", async (req, res) => {
+  try {
+    const { password, level } = req.body as { password: string; level: number };
+    if (!password || password.length < 4) {
+      res.status(400).json({ error: "Password must be at least 4 characters" });
+      return;
+    }
+
+    // Admin override
+    if (ADMIN_AGENT_PASSWORD && password === ADMIN_AGENT_PASSWORD) {
+      res.json({ unlocked: true, isAdmin: true });
+      return;
+    }
+
+    // Curriculum password
+    const curriculumPass = generateCurriculumPassword(level);
+    if (curriculumPass && password === curriculumPass) {
+      res.json({ unlocked: true, isAdmin: false });
+      return;
+    }
+
+    res.json({ unlocked: false, isAdmin: false });
+  } catch (err) {
+    req.log.error({ err }, "Agent unlock error");
+    res.status(500).json({ error: "Unlock check failed" });
+  }
+});
+
 // ─── Agent Mode: Development Agent with CORE LOOP schema ──────────────
 // This is a locked feature. It provides a structured development loop
 // with the Five Masters, safety enforcement, and trace-and-debug teaching.
