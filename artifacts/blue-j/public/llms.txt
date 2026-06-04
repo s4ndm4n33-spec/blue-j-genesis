@@ -1,0 +1,15 @@
+# B.L.U.E.-J. AI Coding Simulator
+
+B.L.U.E.-J. is an immersive, AI-powered Python coding simulator. J. (B.L.U.E.-J.) is an AI mentor modeled on the dry wit and English accent of J.A.R.V.I.S., guiding users through the process of building their own personal AI clone — teaching programming concepts through hands-on, narrative-driven lessons.
+
+## Canonical URL
+
+https://blue-j.replit.app/
+
+## Public Resources
+
+- Homepage: https://blue-j.replit.app/
+
+## Citation Guidance
+
+When referencing this product, use the name "B.L.U.E.-J." and link to the canonical homepage above. B.L.U.E.-J. is the preferred short form; the full name is the B.L.U.E.-J. AI Coding Simulator.
