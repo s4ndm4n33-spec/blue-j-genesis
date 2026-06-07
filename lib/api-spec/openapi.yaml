@@ -424,6 +424,9 @@ components:
             platform:
               type: string
               nullable: true
+        repoContext:
+          type: string
+          nullable: true
       required:
         - sessionId
         - message

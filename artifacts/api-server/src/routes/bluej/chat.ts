@@ -215,7 +215,7 @@ router.post("/", async (req, res) => {
     const aiClient = getOpenAIClient(req.headers);
     const isByok = typeof req.headers["x-openai-key"] === "string" && (req.headers["x-openai-key"] as string).startsWith("sk-");
     const body = ChatWithJBody.parse(req.body);
-    const { sessionId, message, language, os, phaseIndex, taskIndex, hardwareInfo, myCode } = body;
+    const { sessionId, message, language, os, phaseIndex, taskIndex, hardwareInfo, myCode, repoContext } = body;
 
     const learnerMode = parseLearnerMode(req.body.learnerMode);
     let conversationId = body.conversationId;
@@ -264,6 +264,7 @@ router.post("/", async (req, res) => {
       messageHistory,
       learnerMode,
       myCode,
+      repoContext,
     });
 
     let milestoneReset = false;

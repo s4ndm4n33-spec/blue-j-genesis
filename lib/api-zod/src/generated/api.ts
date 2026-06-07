@@ -174,4 +174,5 @@ export const ChatWithJBody = zod.object({
     })
     .optional(),
   myCode: zod.string().nullish().optional(),
+  repoContext: zod.string().nullish().optional(),
 });

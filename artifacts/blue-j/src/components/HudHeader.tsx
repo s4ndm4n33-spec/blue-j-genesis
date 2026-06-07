@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useBlueJStore, LEARNER_MODES, type OperatingSystem, type ProgrammingLanguage } from '@/lib/store';
 import { useProgressStore, xpForNextLevel, xpProgressInLevel } from '@/lib/progress-store';
-import { Terminal, Code2, GitBranch, ShieldAlert, ShieldCheck, GraduationCap, HelpCircle, Target, Award, Heart, Settings, Key, Bot } from 'lucide-react';
+import { Terminal, Code2, GitBranch, ShieldAlert, ShieldCheck, GraduationCap, HelpCircle, Target, Award, Settings, Key, Bot } from 'lucide-react';
 import { Tooltip } from './Tooltip';
 import { HelpOverlay } from './HelpOverlay';
 import { SettingsModal } from './SettingsModal';
@@ -103,14 +103,6 @@ export function HudHeader({ onOpenTutorial }: HudHeaderProps) {
                   className={`px-2.5 py-1 text-xs font-hud rounded-sm transition-colors ${activeTab === 'achievements' ? 'bg-primary/20 text-primary' : 'text-primary/50'}`}
                 >
                   <Award className="w-4 h-4" />
-                </button>
-              </Tooltip>
-              <Tooltip content="Wellness" position="bottom">
-                <button
-                  onClick={() => setActiveTab('wellness')}
-                  className={`px-2.5 py-1 text-xs font-hud rounded-sm transition-colors ${activeTab === 'wellness' ? 'bg-primary/20 text-primary' : 'text-primary/50'}`}
-                >
-                  <Heart className="w-4 h-4" />
                 </button>
               </Tooltip>
               <Tooltip content="Agent Mode" position="bottom">

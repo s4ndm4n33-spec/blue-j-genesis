@@ -7,7 +7,7 @@ import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import {
   Copy, Play, Check, Download, Zap, ChevronDown, ChevronUp,
   Terminal as TerminalIcon, Loader2, X, Cpu, ChevronRight, Activity,
-  CheckCircle2, XCircle, FlaskConical, Bolt, Sparkles, AlertTriangle
+  CheckCircle2, XCircle, FlaskConical, Bolt, Sparkles, AlertTriangle, Wand2
 } from 'lucide-react';
 import { useChatStream } from '@/hooks/use-chat';
 import { DownloadModal } from './DownloadModal';
@@ -200,6 +200,34 @@ export function IdePanel() {
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const [formatting, setFormatting] = useState(false);
+  const handleFormat = async () => {
+    if (!activeCode.trim() || activeCode.includes('Awaiting code')) return;
+    setFormatting(true);
+    try {
+      const resp = await fetch(`/api/bluej/prettier`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: activeCode, language: activeLang }),
+      });
+      const data = await resp.json();
+      if (resp.ok && data.formatted) {
+        if (activeTab === 'my_code') setMyCode(data.formatted);
+        else if (activeTab === 'j_code') {
+          // Can't format J's synthesis directly; offer to copy to workspace
+          addSystemMessage(`J.'s code formatted (Prettier). Copied to workspace for review.`);
+          setMyCode(data.formatted);
+        }
+      } else {
+        addSystemMessage(`Format failed: ${data.error || data.detail || 'Unknown error'}`);
+      }
+    } catch {
+      addSystemMessage('Format request failed — Prettier may not be installed.');
+    } finally {
+      setFormatting(false);
+    }
+  };
+
   const handleSimulate = async () => {
     if (!activeCode.trim() || activeCode.includes('Awaiting code')) return;
     setSimulating(true);
@@ -383,7 +411,7 @@ export function IdePanel() {
                   <SyntaxHighlighter
                     language={LANG_MAP[selectedLanguage] ?? selectedLanguage}
                     style={vscDarkPlus}
-                    customStyle={{ margin: 0, padding: 0, background: 'transparent', fontSize: EDITOR_FONT_SIZE, lineHeight: EDITOR_LINE_HEIGHT, whiteSpace: 'pre', overflow: 'visible' }}
+                    customStyle={{ margin: 0, padding: 0, background: 'transparent', fontSize: EDITOR_FONT_SIZE, lineHeight: EDITOR_LINE_HEIGHT, fontFamily: "'Fira Code', monospace", whiteSpace: 'pre', overflow: 'visible' }}
                     showLineNumbers={false}
                     wrapLongLines={false}
                   >
@@ -396,7 +424,7 @@ export function IdePanel() {
                   onChange={(e) => setMyCode(e.target.value)}
                   onScroll={syncHighlightScroll}
                   className="absolute inset-0 w-full h-full bg-transparent font-mono focus:outline-none resize-none overflow-auto"
-                  style={{ padding: EDITOR_PADDING, lineHeight: EDITOR_LINE_HEIGHT, fontSize: EDITOR_FONT_SIZE, color: 'transparent', caretColor: '#e2e8f0', WebkitTextFillColor: 'transparent', zIndex: 1 }}
+                  style={{ padding: EDITOR_PADDING, lineHeight: EDITOR_LINE_HEIGHT, fontSize: EDITOR_FONT_SIZE, fontFamily: "'Fira Code', monospace", whiteSpace: 'pre', tabSize: 2, color: 'transparent', caretColor: '#e2e8f0', WebkitTextFillColor: 'transparent', zIndex: 1, boxSizing: 'border-box' }}
                   spellCheck={false}
                   autoComplete="off"
                   autoCorrect="off"
@@ -644,6 +672,18 @@ export function IdePanel() {
               >
                 <Download className="w-3.5 h-3.5" />
                 <span className="hidden sm:inline">Export</span>
+              </button>
+            </Tooltip>
+
+            {/* Format with Prettier */}
+            <Tooltip content="Format code with Prettier" position="top">
+              <button
+                onClick={handleFormat}
+                disabled={formatting || !activeCode.trim() || activeCode.includes('Awaiting code')}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/40 text-purple-400 rounded-sm transition-all text-xs font-hud uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {formatting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Wand2 className="w-3.5 h-3.5" />}
+                <span className="hidden sm:inline">{formatting ? 'Formatting...' : 'Format'}</span>
               </button>
             </Tooltip>
 

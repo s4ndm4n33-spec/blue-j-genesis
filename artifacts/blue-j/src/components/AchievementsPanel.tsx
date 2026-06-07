@@ -1,6 +1,7 @@
 import { motion } from 'framer-motion';
 import { useProgressStore } from '@/lib/progress-store';
-import { Award } from 'lucide-react';
+import { useLeaderboardStore, getLeaderboardRank } from '@/lib/leaderboard-store';
+import { Award, Trophy } from 'lucide-react';
 
 const RARITY_STYLES = {
   common:    { border: 'border-gray-500/30',   bg: 'bg-gray-500/5',   text: 'text-gray-400' },
@@ -11,6 +12,7 @@ const RARITY_STYLES = {
 
 export function AchievementsPanel() {
   const { milestones, achievements, stats, streak } = useProgressStore();
+  const { entries, myEntryId } = useLeaderboardStore();
 
   const unlockedMilestones = milestones.filter((m) => m.unlocked);
   const nextMilestones = milestones.filter((m) => !m.unlocked).slice(0, 4);
@@ -30,6 +32,9 @@ export function AchievementsPanel() {
     return Math.min((val / m.requirement) * 100, 100);
   }
 
+  const myRank = myEntryId ? getLeaderboardRank(entries, myEntryId) : null;
+  const topEntries = entries.slice(0, 5);
+
   return (
     <div className="h-full flex flex-col hud-panel">
       <div className="px-4 py-2 border-b border-primary/20 bg-secondary/50 flex items-center gap-2 text-primary font-hud uppercase tracking-widest text-sm">
@@ -38,6 +43,41 @@ export function AchievementsPanel() {
       </div>
 
       <div className="flex-1 overflow-y-auto p-3 space-y-4">
+        {/* Leaderboard */}
+        {topEntries.length > 0 && (
+          <>
+            <h3 className="text-xs font-bold text-primary/70 uppercase tracking-widest font-hud flex items-center gap-1.5">
+              <Trophy className="w-3.5 h-3.5 text-yellow-400" />
+              Leaderboard
+            </h3>
+            <div className="flex flex-col gap-1.5">
+              {topEntries.map((e, i) => {
+                const isMe = e.id === myEntryId;
+                return (
+                  <div
+                    key={e.id}
+                    className={`flex items-center gap-2 px-2.5 py-1.5 rounded-sm border text-xs font-hud ${
+                      isMe ? 'border-yellow-500/30 bg-yellow-500/5 text-yellow-400' : 'border-primary/10 bg-secondary/30 text-primary/80'
+                    }`}
+                  >
+                    <span className={`w-5 text-center font-bold ${i === 0 ? 'text-yellow-400' : i === 1 ? 'text-gray-300' : i === 2 ? 'text-orange-400' : 'text-primary/40'}`}>
+                      {i + 1}
+                    </span>
+                    <span className="flex-1 truncate">{e.name}</span>
+                    <span className="text-[10px] opacity-60">Lv {e.level}</span>
+                    <span className="text-[10px] text-accent/80">{e.xp.toLocaleString()} XP</span>
+                  </div>
+                );
+              })}
+            </div>
+            {myRank && myRank > 5 && (
+              <div className="text-[10px] text-primary/40 text-center font-hud">
+                Your rank: #{myRank} &middot; {stats.totalXp.toLocaleString()} XP
+              </div>
+            )}
+          </>
+        )}
+
         <div className="grid grid-cols-2 gap-2">
           <div className="bg-secondary/50 rounded-sm p-3 border border-primary/20 text-center">
             <div className="text-2xl font-bold text-primary font-display">{unlockedMilestones.length}/{milestones.length}</div>

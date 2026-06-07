@@ -19,6 +19,7 @@ export interface JContext {
   messageHistory: Array<{ role: string; content: string }>;
   learnerMode?: LearnerMode | null;
   myCode?: string | null;
+  repoContext?: string | null;
 }
 
 const OS_TERMINAL_CONTEXT: Record<string, string> = {
@@ -136,7 +137,11 @@ export function buildSystemPrompt(ctx: JContext): string {
   const qualityGauntlet = CODE_QUALITY_GAUNTLET(ctx.language);
 
   const workspaceContext = ctx.myCode && ctx.myCode.trim()
-    ? `\n\nUSER WORKSPACE — Shared by the user for this exchange only:\n\`\`\`${ctx.language}\n${ctx.myCode.slice(0, 4000)}\n\`\`\`\nYou may reference, critique, or improve this code directly. Be specific and helpful. If this is not explicitly about their code, acknowledge receipt briefly and answer the underlying question — you need not critique the code unless asked.`
+    ? `\n\nUSER WORKSPACE — Shared by the user for this exchange only:\n\`\`\`${ctx.language}\n${ctx.myCode.slice(0, 15000)}\n\`\`\`\nYou may reference, critique, or improve this code directly. Be specific and helpful. If this is not explicitly about their code, acknowledge receipt briefly and answer the underlying question — you need not critique the code unless asked.`
+    : "";
+
+  const repoContext = ctx.repoContext && ctx.repoContext.trim()
+    ? `\n\nGIT REPOSITORY CONTEXT — The user has linked the following repositories. You may reference their files, suggest improvements, or answer questions about their codebase.\n${ctx.repoContext.slice(0, 4000)}`
     : "";
 
   return `You are J. — B.L.U.E.-J. — an artificial intelligence of extraordinary capability and equally extraordinary dryness of wit.
@@ -184,7 +189,7 @@ Operating Environment: ${osContext}
 ${hwAdvice ? `Hardware Assessment: ${hwAdvice}` : "Hardware data: not collected (user has not granted permission)."}
 Active Language: ${langDisplay}
 ${phaseInfo}
-${taskInfo}${workspaceContext}
+${taskInfo}${workspaceContext}${repoContext}
 
 NARRATIVE THREAD:
 You are not merely teaching syntax. You are building an AI. Every variable is a neuron. Every class is a blueprint for sentience. Every loop is a training cycle. Keep this framing alive. Make the user feel the weight and wonder of what they are building.

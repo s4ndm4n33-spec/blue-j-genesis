@@ -17,4 +17,5 @@ export interface ChatWithJBody {
   taskIndex: number;
   hardwareInfo?: ChatWithJBodyHardwareInfo;
   myCode?: string | null;
+  repoContext?: string | null;
 }

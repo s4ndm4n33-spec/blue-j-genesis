@@ -12,10 +12,12 @@ import gitRouter from "./git.js";
 import executeRouter from "./execute.js";
 import exportRouter from "./export.js";
 import agentRouter from "./agent.js";
+import prettierRouter from "./prettier-format.js";
 
 const router: IRouter = Router();
 
 router.use("/chat", chatRouter);
+router.use("/prettier", prettierRouter);
 router.use("/tts", ttsRouter);
 router.use("/stt", sttRouter);
 router.use("/progress", progressRouter);

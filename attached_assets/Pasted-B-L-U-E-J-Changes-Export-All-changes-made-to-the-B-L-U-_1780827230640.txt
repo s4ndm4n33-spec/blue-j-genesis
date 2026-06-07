@@ -1,0 +1,325 @@
+B.L.U.E.-J. Changes Export
+All changes made to the B.L.U.E.-J. project. Copy these into the AI-Coder-Genesis project.
+
+T001: Remove Wellness Panel
+1. src/pages/simulator.tsx — Remove wellness tab
+const desktopTabs = [
+  { id: 'chat' as const,         label: 'Chat',         icon: Terminal },
+  { id: 'ide' as const,          label: 'IDE',          icon: Code2 },
+  { id: 'git' as const,          label: 'Git',          icon: GitBranch },
+  { id: 'goals' as const,        label: 'Goals',        icon: Target },
+  { id: 'achievements' as const, label: 'Achievements', icon: Award },
+];
+
+2. src/lib/store.ts — Remove wellness from activeTab type
+activeTab: 'chat' | 'ide' | 'git' | 'goals' | 'achievements';
+setActiveTab: (tab: 'chat' | 'ide' | 'git' | 'goals' | 'achievements') => void;
+
+3. src/components/HudHeader.tsx — Remove wellness from mobile tabs
+const mobileTabs = [
+  { id: 'chat', icon: Terminal },
+  { id: 'ide', icon: Code2 },
+  { id: 'git', icon: GitBranch },
+  { id: 'goals', icon: Target },
+  { id: 'achievements', icon: Award },
+] as const;
+
+T002: Prettier Integration
+1. Install dependency
+npm install -D prettier@^3.8.1
+
+2. Create .prettierrc
+{
+  "semi": true,
+  "singleQuote": true,
+  "tabWidth": 2,
+  "trailingComma": "es5",
+  "printWidth": 100,
+  "bracketSpacing": true,
+  "arrowParens": "avoid"
+}
+
+3. Create .prettierignore
+node_modules
+dist
+build
+public
+*.lock
+*.log
+
+4. Add to package.json scripts
+"scripts": {
+  "format": "prettier --write .",
+  "format:check": "prettier --check ."
+}
+
+5. Backend: api-server/src/routes/bluej/prettier-format.ts (NEW FILE)
+import { Router, type IRouter } from "express";
+import { execFile } from "child_process";
+import { promisify } from "util";
+import { writeFile, unlink } from "fs/promises";
+import { join } from "path";
+import { randomUUID } from "crypto";
+const execFileAsync = promisify(execFile);
+const router: IRouter = Router();
+const TMP_DIR = "/tmp/bluej-prettier";
+function resolveParser(language: string): string | null {
+  const l = language.toLowerCase();
+  if (l === "javascript" || l === "js") return "babel";
+  if (l === "typescript" || l === "ts") return "typescript";
+  if (l === "json") return "json";
+  if (l === "css" || l === "scss") return "css";
+  if (l === "html" || l === "htm") return "html";
+  if (l === "markdown" || l === "md") return "markdown";
+  if (l === "python" || l === "py") return null;
+  return "babel";
+}
+router.post("/", async (req, res) => {
+  try {
+    const { code, language = "javascript" } = req.body;
+    if (!code?.trim()) { res.status(400).json({ error: "No code provided" }); return; }
+    const parser = resolveParser(language);
+    if (!parser) {
+      res.json({ formatted: code, error: `Prettier does not support ${language}.`, changed: false, parser: null });
+      return;
+    }
+    const id = randomUUID();
+    const ext = parser === "typescript" ? "ts" : parser === "json" ? "json" : "js";
+    const file = join(TMP_DIR, `${id}.${ext}`);
+    await writeFile(file, code, "utf-8");
+    try {
+      const { stdout } = await execFileAsync(
+        "npx",
+        ["prettier", "--parser", parser, "--print-width", "100", "--tab-width", "2", "--single-quote", "--semi", file],
+        { timeout: 5000, cwd: "/tmp" }
+      );
+      await unlink(file).catch(() => {});
+      const changed = stdout !== code;
+      res.json({ formatted: stdout, changed, parser, error: null });
+    } catch (err: any) {
+      await unlink(file).catch(() => {});
+      const stderr = err?.stderr || err?.message || "";
+      res.json({ formatted: code, changed: false, parser, error: `Prettier failed: ${stderr.slice(0, 300)}` });
+    }
+  } catch (err) {
+    req.log.error({ err }, "Prettier format error");
+    res.status(500).json({ error: "Format failed" });
+  }
+});
+export default router;
+
+6. Mount in backend index: api-server/src/index.ts
+import prettierRouter from "./routes/bluej/prettier-format.js";
+app.use("/api/bluej/prettier", prettierRouter);
+
+7. Frontend: Add to IdePanel.tsx — handleFormat() function
+const handleFormat = async () => {
+  if (!myCode.trim()) return;
+  setFormatting(true);
+  try {
+    const resp = await fetch('/api/bluej/prettier', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code: myCode, language: selectedLanguage }),
+    });
+    const data = await resp.json();
+    if (data.formatted && data.changed) {
+      setMyCode(data.formatted);
+      addSystemMessage?.(`Prettier formatted your ${selectedLanguage} code.`);
+    } else if (data.error) {
+      addSystemMessage?.(`Prettier: ${data.error}`);
+    } else {
+      addSystemMessage?.(`Prettier: Code already formatted.`);
+    }
+  } catch (err) {
+    addSystemMessage?.('Prettier formatting failed. Check connection.');
+  } finally {
+    setFormatting(false);
+  }
+};
+
+Add a Format button in the toolbar with <button onClick={handleFormat}> and formatting state.
+
+T003: Git Repo Read Access for J
+1. Backend: api-server/src/routes/bluej/git.ts — ADD /context/:sessionId endpoint
+Add this route to the existing git.ts file (or create it fresh):
+
+// Read-only repo context for J (auto-fetches recent files)
+router.get("/context/:sessionId", async (req, res) => {
+  try {
+    const rows = await db.select().from(gitRepos).where(eq(gitRepos.sessionId, req.params.sessionId));
+    if (rows.length === 0) { res.json({ context: "" }); return; }
+    const repo = rows[0];
+    const cwd = repo.localPath;
+    // Get recent commit files (last 10)
+    const { stdout: log } = await execFileAsync("git", ["-C", cwd, "log", "--name-only", "--pretty=format:", "-10"]);
+    const files = [...new Set(log.split("\n").filter((f) => f.trim() && !f.includes("Binary")))];
+    const fileContents: string[] = [];
+    let totalChars = 0;
+    const MAX_CHARS = 4000;
+    for (const f of files.slice(0, 15)) {
+      const p = join(cwd, f);
+      if (!p.startsWith(cwd)) continue;
+      try {
+        const c = await readFile(p, "utf-8");
+        if (c.length > 500) continue;
+        if (totalChars + c.length > MAX_CHARS) break;
+        fileContents.push(`\n--- FILE: ${f} ---\n${c}`);
+        totalChars += c.length + f.length + 20;
+      } catch { /* skip unreadable */ }
+    }
+    const context = `Repository: ${repo.name}\nBranch: ${repo.branch}\n${fileContents.join("\n")}`;
+    res.json({ context });
+  } catch (err) {
+    req.log.error({ err }, "Git context error");
+    res.json({ context: "" });
+  }
+});
+
+2. Backend: api-server/src/routes/bluej/chat.ts — Fetch repo context
+In the router.post("/", ...) handler, BEFORE the system prompt is built:
+
+// Fetch repo context if shareWithJ flag is set
+let repoContext = "";
+if (req.body.shareWithJ && req.body.sessionId) {
+  try {
+    const ctxRes = await fetch(`http://localhost:${process.env.PORT || 3000}/api/bluej/git/context/${req.body.sessionId}`);
+    const ctxData = await ctxRes.json();
+    if (ctxData.context) repoContext = ctxData.context;
+  } catch { /* ignore */ }
+}
+
+Pass repoContext into the buildSystemPrompt call.
+
+3. Backend: api-server/src/routes/bluej/j-personality.ts — Add to system prompt
+In the buildSystemPrompt function, add this section if repoContext is provided:
+
+if (repoContext) {
+  systemPrompt += `\n\nYou have READ-ONLY access to the user's workspace repository. The user can ask you to review, analyze, or reference their repo files. You cannot modify their files.\n\n${repoContext}`;
+}
+
+4. Frontend: src/hooks/use-chat.ts — Detect repo keywords
+In the sendMessage function, before the fetch call:
+
+const repoKeywords = /\b(repo|repository|git|github|clone|push|commit|branch|pull|merge|my repo|the repo|this repo)\b/i;
+const shouldIncludeRepo = repoKeywords.test(content);
+
+Pass in the body:
+
+body: JSON.stringify({
+  ...,
+  ...(shouldIncludeRepo ? { shareWithJ: true } : {}),
+})
+
+T004: Leaderboard / Gamification
+1. Create src/lib/leaderboard-store.ts (NEW FILE)
+import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
+export interface LeaderboardEntry {
+  id: string;
+  name: string;
+  score: number;
+  level: number;
+  achievements: number;
+  streak: number;
+  updatedAt: number;
+}
+interface LeaderboardState {
+  entries: LeaderboardEntry[];
+  userId: string;
+  userName: string;
+  addOrUpdateUser: (score: number, level: number, achievements: number, streak: number) => void;
+  setUserName: (name: string) => void;
+  getRank: (id: string) => number;
+}
+export const useLeaderboardStore = create<LeaderboardState>()(
+  persist(
+    (set, get) => ({
+      entries: [
+        { id: 'demo-1', name: 'CodeWolf', score: 8500, level: 18, achievements: 9, streak: 12, updatedAt: Date.now() },
+        { id: 'demo-2', name: 'NeonDev', score: 6200, level: 14, achievements: 7, streak: 5, updatedAt: Date.now() },
+        { id: 'demo-3', name: 'SyntaxQueen', score: 4100, level: 10, achievements: 5, streak: 3, updatedAt: Date.now() },
+        { id: 'demo-4', name: 'BugHunter', score: 2300, level: 6, achievements: 3, streak: 2, updatedAt: Date.now() },
+        { id: 'demo-5', name: 'HelloWorld', score: 800, level: 2, achievements: 1, streak: 1, updatedAt: Date.now() },
+      ],
+      userId: 'me',
+      userName: 'You',
+      addOrUpdateUser: (score, level, achievements, streak) => {
+        const { entries, userId, userName } = get();
+        const filtered = entries.filter((e) => e.id !== userId);
+        const updated: LeaderboardEntry = {
+          id: userId, name: userName, score, level, achievements, streak, updatedAt: Date.now(),
+        };
+        const next = [...filtered, updated].sort((a, b) => b.score - a.score);
+        set({ entries: next });
+      },
+      setUserName: (name) => set({ userName: name.trim() || 'You' }),
+      getRank: (id) => {
+        const idx = get().entries.findIndex((e) => e.id === id);
+        return idx >= 0 ? idx + 1 : get().entries.length + 1;
+      },
+    }),
+    { name: 'bluej-leaderboard' }
+  )
+);
+
+2. Modify src/components/AchievementsPanel.tsx — Add leaderboard UI
+Add imports:
+
+import { useLeaderboardStore } from '@/lib/leaderboard-store';
+import { Share2, Crown, User } from 'lucide-react';
+
+Inside the component:
+
+const { entries, userId, userName, getRank, setUserName, addOrUpdateUser } = useLeaderboardStore();
+// Score formula
+const userScore = stats.totalXp + (stats.totalLinesWritten * 2) + (stats.sessionsCompleted * 50) + (streak.currentStreak * 25);
+const userRank = getRank(userId);
+// Update leaderboard on every render
+addOrUpdateUser(userScore, stats.level, achievements.filter((a) => a.unlockedAt).length, streak.currentStreak);
+const shareText = `I am rank #${userRank} on B.L.U.E.-J. with ${userScore} pts, level ${stats.level}, and a ${streak.currentStreak}-day streak!`;
+
+Add leaderboard UI elements:
+
+Top 5 entries table with rank, name, score, level, badges
+User rank card (styled differently if top 3)
+Share button that opens a modal with copy-to-clipboard text
+Username inline editing
+T005: Agent Feature
+The user explicitly said they don't need this export — the agent feature is already running in the other project.
+
+T006: Agent Cost Specs
+Also already present in the other project.
+
+Mount Points
+In api-server/src/index.ts, ensure all routers are mounted:
+
+import prettierRouter from "./routes/bluej/prettier-format.js";
+import gitRouter from "./routes/bluej/git.js";
+app.use("/api/bluej/prettier", prettierRouter);
+app.use("/api/bluej/git", gitRouter);
+
+In api-server/src/routes/bluej/index.ts, export the prettier router:
+
+export { default as prettierRouter } from "./prettier-format.js";
+
+Summary of Files Created
+File	Purpose
+.prettierrc	Prettier config
+.prettierignore	Prettier ignore rules
+src/lib/leaderboard-store.ts	Leaderboard state
+api-server/src/routes/bluej/prettier-format.ts	Backend formatting endpoint
+Summary of Files Modified
+File	Changes
+src/pages/simulator.tsx	Removed wellness tab
+src/lib/store.ts	Removed wellness from activeTab type
+src/components/HudHeader.tsx	Removed wellness from mobile tabs
+src/components/IdePanel.tsx	Added handleFormat() + Format button
+src/components/AchievementsPanel.tsx	Added leaderboard UI + Share modal
+src/hooks/use-chat.ts	Added repo keyword detection
+src/components/ChatPanel.tsx	Added Share Workspace button
+api-server/src/routes/bluej/chat.ts	Added repo context fetch + passthrough
+api-server/src/routes/bluej/j-personality.ts	Added repo context to system prompt
+api-server/src/routes/bluej/git.ts	Added /context/:sessionId endpoint
+api-server/src/index.ts	Mounted prettier + git routers
+package.json	Added format and format:check scripts

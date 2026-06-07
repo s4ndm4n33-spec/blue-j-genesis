@@ -251,6 +251,41 @@ router.get("/:id/diff", async (req, res) => {
   }
 });
 
+// Get repo context for J (latest files + status)
+router.get("/context/:sessionId", async (req, res) => {
+  try {
+    const { sessionId } = req.params;
+    const rows = await db.select().from(gitRepos).where(eq(gitRepos.sessionId, sessionId));
+    if (rows.length === 0) {
+      res.json({ repos: [] });
+      return;
+    }
+    const contexts: Array<{ repoName: string; branch: string; files: Array<{ path: string; content: string }> }> = [];
+    for (const repo of rows) {
+      try {
+        const { stdout: branch } = await execFileAsync("git", ["-C", repo.localPath, "rev-parse", "--abbrev-ref", "HEAD"]);
+        const { stdout: ls } = await execFileAsync("git", ["-C", repo.localPath, "ls-files"]);
+        const files: Array<{ path: string; content: string }> = [];
+        for (const path of ls.split("\n").filter(Boolean)) {
+          try {
+            const { stdout } = await execFileAsync("git", ["-C", repo.localPath, "show", `HEAD:${path}`]);
+            files.push({ path, content: stdout.slice(0, 2000) });
+          } catch {
+            files.push({ path, content: "[binary or unreadable]" });
+          }
+        }
+        contexts.push({ repoName: repo.repoName, branch: branch.trim(), files });
+      } catch {
+        // skip repo on error
+      }
+    }
+    res.json({ repos: contexts });
+  } catch (err) {
+    req.log.error({ err }, "Git context error");
+    res.status(500).json({ error: "Context failed" });
+  }
+});
+
 // List repos for a session
 router.get("/list/:sessionId", async (req, res) => {
   try {

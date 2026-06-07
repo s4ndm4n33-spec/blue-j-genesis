@@ -42,11 +42,26 @@ export function useChatStream() {
     // Detect explicit workspace-share intent or keyword recall
     const shareKeywords = /\b(look at my code|check my code|review my code|see my code|what's wrong with my code|fix my code|optimize my code|workspace code|my code is|the code in my editor|share workspace)\b/i;
     const recallKeywords = /\b(what about the code|the code you saw|my code earlier|the workspace|the editor code|that code)\b/i;
+    const repoKeywords = /\b(my repo|the repo|look at my repo|check my repo|review my repo|my project|the project|git repo|repository)\b/i;
     const messageHistory = messages.slice(-6);
     const recentShare = messageHistory.some(m =>
       m.role === 'user' && shareKeywords.test(m.content)
     );
     const shouldIncludeWorkspace = forceShareWorkspace || shareKeywords.test(content) || (recentShare && recallKeywords.test(content));
+    const shouldIncludeRepo = repoKeywords.test(content);
+
+    let repoContext: string | undefined;
+    if (shouldIncludeRepo) {
+      try {
+        const resp = await fetch(`/api/bluej/git/context/${sessionId}`);
+        if (resp.ok) {
+          const data = await resp.json();
+          repoContext = JSON.stringify(data.repos);
+        }
+      } catch {
+        // silently ignore repo fetch failure
+      }
+    }
 
     try {
       const response = await fetch(`/api/bluej/chat`, {
@@ -66,6 +81,7 @@ export function useChatStream() {
           hardwareInfo,
           learnerMode,
           ...(shouldIncludeWorkspace ? { myCode: useBlueJStore.getState().myCode } : {}),
+          ...(repoContext ? { repoContext } : {}),
         })
       });
 
