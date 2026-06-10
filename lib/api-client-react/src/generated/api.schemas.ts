@@ -92,7 +92,17 @@ export interface ChatWithJBody {
   phaseIndex: number;
   taskIndex: number;
   hardwareInfo?: ChatWithJBodyHardwareInfo;
+  repoContext?: string | null;
   myCode?: string | null;
+  learnerMode?: string | null;
+}
+
+export interface ChatWithJDoneEvent {
+  done: boolean;
+  conversationId: number;
+  memoryVersion?: number;
+  contextArchived?: boolean;
+  archivedCount?: number;
 }
 
 export type GetProgressParams = {

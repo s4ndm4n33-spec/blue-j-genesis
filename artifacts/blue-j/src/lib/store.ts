@@ -43,6 +43,23 @@ export interface PortfolioEntry {
   notes?: string;
 }
 
+export interface WorkingMemoryEntry {
+  label: string;
+  details: string;
+  confidence: "confirmed" | "suggested" | "unverified" | "stale";
+  fromMessage: number | null;
+  updatedAt: string;
+}
+
+export interface WorkingMemory {
+  keyDecisions: WorkingMemoryEntry[];
+  codeEntities: WorkingMemoryEntry[];
+  openIssues: WorkingMemoryEntry[];
+  projectState: WorkingMemoryEntry[];
+  lastUpdated: string;
+  version: number;
+}
+
 export const LEARNER_MODES: { id: LearnerMode; label: string; shortLabel: string }[] = [
   { id: 'kids', label: 'Kids (8–12)', shortLabel: 'KIDS' },
   { id: 'teen', label: 'Teen (13–17)', shortLabel: 'TEEN' },
@@ -102,6 +119,10 @@ interface BlueJState {
   userApiKey: string;
   setUserApiKey: (key: string) => void;
 
+  // Working Memory
+  workingMemory: WorkingMemory | null;
+  setWorkingMemory: (memory: WorkingMemory | null) => void;
+
   // Agent Mode (locked until curriculum complete or personal password)
   agentModeUnlocked: boolean;
   agentModePassword: string | null;
@@ -144,6 +165,7 @@ export const useBlueJStore = create<BlueJState>()(
       isTyping: false,
       portfolio: [],
       userApiKey: '',
+      workingMemory: null,
       agentModeUnlocked: false,
       agentModePassword: null,
 
@@ -166,6 +188,7 @@ export const useBlueJStore = create<BlueJState>()(
       setLearnerMode: (mode) => set({ learnerMode: mode }),
       setDiagnosticDone: (done) => set({ diagnosticDone: done }),
       setTutorialDone: (done) => set({ tutorialDone: done }),
+      setWorkingMemory: (memory) => set({ workingMemory: memory }),
       addMessage: (msg) => set(s => ({ messages: [...s.messages, msg] })),
       updateLastAssistantMessage: (id, content) => set(s => ({
         messages: s.messages.map(m => m.id === id ? { ...m, content } : m)

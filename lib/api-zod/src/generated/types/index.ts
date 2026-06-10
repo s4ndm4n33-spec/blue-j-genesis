@@ -8,6 +8,7 @@
 
 export * from "./chatWithJBody";
 export * from "./chatWithJBodyHardwareInfo";
+export * from "./chatWithJDoneEvent";
 export * from "./completeTaskBody";
 export * from "./createOpenaiConversationBody";
 export * from "./getProgressParams";

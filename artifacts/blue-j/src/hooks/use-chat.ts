@@ -123,10 +123,8 @@ export function useChatStream() {
             }
             if (data.done && data.conversationId) {
               setConversationId(data.conversationId);
-              if (data.milestoneReset) {
-                if (data.chapterSummary) addChapterSummary(data.chapterSummary);
-                clearMessages();
-                addSystemMessage("── CHAPTER COMPLETE — J. has archived this chapter. Open Export & Save → Progress to review all chapters. ──");
+              if (data.memoryVersion) {
+                addSystemMessage(`── MEMORY UPDATED — Working memory v${data.memoryVersion} saved. J. now tracks key decisions, code entities, and open issues across sessions. ──`);
               }
               if (data.contextArchived && data.archivedCount > 0) {
                 addSystemMessage(`── CONTEXT ARCHIVED — ${data.archivedCount} earlier messages were summarized to preserve token budget. Export the full log from the menu above. ──`);

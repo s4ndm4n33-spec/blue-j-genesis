@@ -427,6 +427,12 @@ components:
         repoContext:
           type: string
           nullable: true
+        myCode:
+          type: string
+          nullable: true
+        learnerMode:
+          type: string
+          nullable: true
       required:
         - sessionId
         - message
@@ -434,3 +440,19 @@ components:
         - os
         - phaseIndex
         - taskIndex
+    ChatWithJDoneEvent:
+      type: object
+      properties:
+        done:
+          type: boolean
+        conversationId:
+          type: integer
+        memoryVersion:
+          type: integer
+        contextArchived:
+          type: boolean
+        archivedCount:
+          type: integer
+      required:
+        - done
+        - conversationId

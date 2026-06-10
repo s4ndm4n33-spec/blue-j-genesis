@@ -173,6 +173,7 @@ export const ChatWithJBody = zod.object({
       platform: zod.string().nullish(),
     })
     .optional(),
-  myCode: zod.string().nullish().optional(),
-  repoContext: zod.string().nullish().optional(),
+  repoContext: zod.string().nullish(),
+  myCode: zod.string().nullish(),
+  learnerMode: zod.string().nullish(),
 });

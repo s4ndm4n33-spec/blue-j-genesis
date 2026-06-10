@@ -8,6 +8,7 @@ import { ChatWithJBody } from "@workspace/api-zod";
 import { eq } from "drizzle-orm";
 import { buildSystemPrompt, buildSafetyCheck } from "./j-personality.js";
 import { CURRICULUM } from "./curriculum.js";
+import { buildStructuredMemory, formatMemoryPrompt, parseWorkingMemory, type WorkingMemory } from "./working-memory.js";
 
 const router: IRouter = Router();
 
@@ -120,33 +121,6 @@ Respond ONLY in valid JSON (no markdown, no explanation):
   }
 }
 
-const MILESTONE_MESSAGE_THRESHOLD = 20;
-
-async function summarizeConversation(
-  msgs: Array<{ role: string; content: string }>,
-  language: string,
-  client: OpenAI
-): Promise<string> {
-  const transcript = msgs
-    .slice(-20)
-    .map((m) => `${m.role}: ${m.content.slice(0, 400)}`)
-    .join("\n");
-  try {
-    const resp = await client.chat.completions.create({
-      model: "gpt-4o-mini",
-      max_completion_tokens: 150,
-      temperature: 0.4,
-      messages: [
-        { role: "system", content: "Summarize this coding lesson in 2-3 sentences. State the language, concepts covered, and any code written. Be concise." },
-        { role: "user", content: `${language} lesson:\n${transcript}` },
-      ],
-    });
-    return resp.choices[0]?.message?.content ?? "Previous chapter completed.";
-  } catch {
-    return "Previous chapter completed.";
-  }
-}
-
 async function generateWithGauntlet(
   chatMessages: Array<{ role: "system" | "user" | "assistant"; content: string }>,
   language: string,
@@ -253,6 +227,15 @@ router.post("/", async (req, res) => {
     const currentPhase = CURRICULUM[phaseIndex] ?? null;
     const currentTask = currentPhase?.tasks[taskIndex] ?? null;
 
+    // Load structured working memory for this conversation
+    const convRows = await db
+      .select()
+      .from(conversationsTable)
+      .where(eq(conversationsTable.id, conversationId));
+    let workingMemory = parseWorkingMemory(convRows[0]?.structuredSummary ?? null);
+
+    // Build system prompt with working memory injected
+    const memoryPrompt = formatMemoryPrompt(workingMemory);
     const systemPrompt = buildSystemPrompt({
       phaseIndex,
       taskIndex,
@@ -266,24 +249,7 @@ router.post("/", async (req, res) => {
       myCode,
       repoContext,
     });
-
-    let milestoneReset = false;
-    let chapterSummary = "";
-    if (conversationId && messageHistory.length >= MILESTONE_MESSAGE_THRESHOLD) {
-      chapterSummary = await summarizeConversation(messageHistory, language, aiClient);
-      const newConv = await db
-        .insert(conversationsTable)
-        .values({ title: `Chapter ${Math.ceil(messageHistory.length / MILESTONE_MESSAGE_THRESHOLD)} — ${sessionId.slice(0, 8)}` })
-        .returning();
-      const newConvId = newConv[0].id;
-      await db.insert(messagesTable).values({
-        conversationId: newConvId,
-        role: "assistant",
-        content: `[CHAPTER ARCHIVE — what we covered: ${chapterSummary}]`,
-      });
-      conversationId = newConvId;
-      milestoneReset = true;
-    }
+    const fullSystemPrompt = systemPrompt + memoryPrompt;
 
     await db.insert(messagesTable).values({
       conversationId,
@@ -291,13 +257,11 @@ router.post("/", async (req, res) => {
       content: message,
     });
 
-    const freshMessages = milestoneReset
-      ? await db
-          .select()
-          .from(messagesTable)
-          .where(eq(messagesTable.conversationId, conversationId))
-          .orderBy(messagesTable.createdAt)
-      : existingMessages;
+    const freshMessages = await db
+      .select()
+      .from(messagesTable)
+      .where(eq(messagesTable.conversationId, conversationId))
+      .orderBy(messagesTable.createdAt);
 
     const freshHistory = freshMessages.map((m) => ({
       role: m.role as "user" | "assistant",
@@ -305,12 +269,13 @@ router.post("/", async (req, res) => {
     }));
 
     // ── DETERMINISTIC TOKEN BUDGET ARCHIVING ──
-    const HISTORY_TOKEN_BUDGET = 2_048;
+    const HISTORY_TOKEN_BUDGET = 8_000;
     const estimateTokens = (text: string) => Math.ceil(text.length / 4);
 
     let totalTokens = 0;
     for (const m of freshHistory) totalTokens += estimateTokens(m.content);
     totalTokens += estimateTokens(message);
+    totalTokens += estimateTokens(fullSystemPrompt);
 
     let contextArchived = false;
     let archivedCount = 0;
@@ -375,7 +340,7 @@ router.post("/", async (req, res) => {
     }));
 
     const chatMessages = [
-      { role: "system" as const, content: systemPrompt },
+      { role: "system" as const, content: fullSystemPrompt },
       ...finalHistory.map((m) => ({
         role: m.role as "user" | "assistant" | "system",
         content: m.content,
@@ -391,6 +356,25 @@ router.post("/", async (req, res) => {
       content: fullResponse,
     });
 
+    // ── STRUCTURED WORKING MEMORY UPDATE ──
+    // Update every 10 messages or when user explicitly asks
+    const shouldUpdateMemory =
+      finalHistory.length % 10 === 0 ||
+      /\bremember\b|working\s*memory|update\s*memory|track\s*this|keep\s*this\s*in\s*mind/i.test(message);
+
+    if (shouldUpdateMemory && finalHistory.length >= 4) {
+      const updatedMemory = await buildStructuredMemory(
+        finalHistory.map((m) => ({ role: m.role, content: m.content })),
+        workingMemory,
+        aiClient
+      );
+      await db
+        .update(conversationsTable)
+        .set({ structuredSummary: updatedMemory })
+        .where(eq(conversationsTable.id, conversationId));
+      workingMemory = updatedMemory;
+    }
+
     await db
       .update(userProgressTable)
       .set({ conversationId, selectedLanguage: language, selectedOs: os, updatedAt: new Date() })
@@ -405,7 +389,8 @@ router.post("/", async (req, res) => {
       res.write(`data: ${JSON.stringify({ content: fullResponse.slice(i, i + CHUNK) })}\n\n`);
     }
 
-    res.write(`data: ${JSON.stringify({ done: true, conversationId, milestoneReset, chapterSummary, contextArchived, archivedCount })}\n\n`);
+    const memoryVersion = workingMemory.version;
+    res.write(`data: ${JSON.stringify({ done: true, conversationId, memoryVersion, contextArchived, archivedCount })}\n\n`);
     res.end();
   } catch (err) {
     req.log.error({ err }, "Chat error");
@@ -421,6 +406,57 @@ router.post("/", async (req, res) => {
       res.write(`data: ${JSON.stringify({ error: "Internal error", done: true })}\n\n`);
       res.end();
     }
+  }
+  return;
+});
+
+// ── GET: working memory for a conversation ──
+router.get("/:conversationId/memory", async (req, res) => {
+  try {
+    const convId = Number(req.params.conversationId);
+    if (Number.isNaN(convId)) {
+      res.status(400).json({ error: "Invalid conversation ID" });
+      return;
+    }
+    const convRows = await db
+      .select()
+      .from(conversationsTable)
+      .where(eq(conversationsTable.id, convId));
+    const conv = convRows[0];
+    if (!conv) {
+      res.status(404).json({ error: "Conversation not found" });
+      return;
+    }
+    const memory = parseWorkingMemory(conv.structuredSummary ?? null);
+    res.json({ memory, version: memory.version, lastUpdated: memory.lastUpdated });
+  } catch (err) {
+    req.log.error({ err }, "Memory fetch error");
+    res.status(500).json({ error: "Failed to fetch working memory" });
+  }
+});
+
+// ── POST: update working memory for a conversation ──
+router.post("/:conversationId/memory", async (req, res) => {
+  try {
+    const convId = Number(req.params.conversationId);
+    if (Number.isNaN(convId)) {
+      res.status(400).json({ error: "Invalid conversation ID" });
+      return;
+    }
+    const { memory } = req.body;
+    if (!memory || typeof memory !== "object") {
+      res.status(400).json({ error: "Invalid memory payload" });
+      return;
+    }
+    const parsed = parseWorkingMemory(memory);
+    await db
+      .update(conversationsTable)
+      .set({ structuredSummary: parsed })
+      .where(eq(conversationsTable.id, convId));
+    res.json({ success: true, version: parsed.version });
+  } catch (err) {
+    req.log.error({ err }, "Memory update error");
+    res.status(500).json({ error: "Failed to update working memory" });
   }
 });
 
