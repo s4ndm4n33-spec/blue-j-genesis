@@ -402,16 +402,47 @@ This log records the complete architectural history, working standards, and sess
 
 ---
 
+### Session 10: Structured Working Memory (June 10, 2026)
+**Date**: 2026-06-10
+**Time Range**: 09:44 UTC
+**Session ID**: `1c3e6b5d-d1be-4761-a9c2-2cfad570a316`
+
+| Commit | Time (UTC) | Description |
+|--------|------------|-------------|
+| `48160fd` | 09:44:00 | Integrate structured working memory for enhanced AI coding assistance — JSONB `structuredSummary` column, confidence markers (confirmed/suggested/unverified/stale), 4-section memory (keyDecisions, codeEntities, openIssues, projectState), 8K token budget, backend `buildStructuredMemory()` + `formatMemoryPrompt()` + `parseWorkingMemory()`, GET/POST `/chat/:id/memory` endpoints, SSE `memoryVersion` in done event, frontend store `workingMemory` state, `use-chat.ts` update message |
+
+**Key Decisions Made**:
+- Structured working memory replaces shallow chapter summaries — every 10 messages or on explicit user trigger ("remember this", "update memory", "track this")
+- Confidence markers prevent hallucination: `confirmed` (user stated), `suggested` (J inferred), `unverified` (ambiguous), `stale` (needs refresh)
+- 4 sections, 8 entries each, <2KB footprint — stays within token budget even when injected into system prompt
+- `gpt-4o-mini` for memory generation (cheap) + `gpt-5.2` / `gpt-4o` for main chat (quality) — dual-model strategy
+- Ground truth pointers: `fromMessage` field ties every entry to a specific message in conversation history
+- Token budget: 2K → 8K (40K chars) — accommodates long partner programming sessions
+- Old chapter-reset logic (20-message threshold) removed; context archiving now preserves structured memory as a system message
+- Frontend state: `workingMemory` + `setWorkingMemory` in Zustand store; `memoryVersion` received via SSE done event
+- Backend API: GET/POST `/chat/:conversationId/memory` for reading and updating memory directly
+
+**Task Plan (T001-T005)**:
+| Task | Description | Status |
+|------|-------------|--------|
+| T001 | Database Schema — `structuredSummary` JSONB column in conversations | ✔ |
+| T002 | Memory Engine — `buildStructuredMemory()`, confidence markers, 4 sections | ✔ |
+| T003 | System Prompt Integration — `[WORKING MEMORY]` block, 8K budget, archive logic | ✔ |
+| T004 | API Schema — `ChatWithJBody`, `ChatWithJDoneEvent`, orval regeneration | ✔ |
+| T005 | Frontend — `use-chat.ts` memory message, store state, `memoryVersion` | ✔ |
+
+---
+
 ## Commit Statistics
 
 | Metric | Count |
 |--------|-------|
-| Total Commits | 37 |
+| Total Commits | 38 |
 | Deployment Commits | 14 |
-| Feature Commits | 23 |
+| Feature Commits | 24 |
 | First Commit | 2026-03-28 01:50:29 UTC |
-| Latest Commit | 2026-06-07 10:00:00 UTC |
-| Development Span | 71 days |
-| Active Sessions | 9 |
+| Latest Commit | 2026-06-10 09:44:00 UTC |
+| Development Span | 74 days |
+| Active Sessions | 10 |
 
 ---
