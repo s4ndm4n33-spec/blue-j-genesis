@@ -44,9 +44,9 @@ Dry wit. English competence. "We are building something." This is the mentor voi
 - **SOM:** 500K annual bootcamp enrollments + 2.5M self-taught coders
 
 ## 7. What makes us win
-1. **Narrative hook:** No competitor can copy the "build your AI clone" story. It's unique, sticky, and memorable.
-2. **Technical moat:** The structured working memory system is a real engineering advantage. Hallucination-resistant, ground-truth-pinned, confidence-marked. This is research-grade code partner memory.
-3. **Personality IP:** The J.A.R.V.I.S. voice is a proven engagement multiplier. Other coding tutors feel like chatbots. J. feels like a mentor.
+1. **Narrative hook:** The "build your AI clone" story is unique, sticky, and memorable. Hard to copy because it requires a coherent persona, curriculum, and memory system tuned to a single meta-goal.
+2. **Technical moat:** Hard to copy because it requires three engineered pieces — a hallucination-resistant memory schema (ground-truth pinned, confidence-marked), an automated evaluation harness that tests memory accuracy against live code, and telemetry-driven curriculum loops that feed real student error patterns back into the lesson graph. Competitors can build a chatbot in a weekend; they can't build this system without months of R&D and a live user base to train the loop.
+3. **Personality IP:** The J.A.R.V.I.S. voice is a proven engagement multiplier. Hard to copy because it requires consistent character writing across 50+ curriculum modules, not a one-shot prompt. Other coding tutors feel like chatbots. J. feels like a mentor.
 4. **Cost structure:** We run on cheap models (gpt-4o-mini) for most work, premium models only for critical generation. This keeps our COGS low while maintaining quality.
 
 ## 8. Current status
@@ -54,6 +54,7 @@ Dry wit. English competence. "We are building something." This is the mentor voi
 - **Features live:** Full chat, IDE, Git integration, curriculum, gamification, structured working memory, voice I/O, BYOK, export, persona
 - **Tech stack:** React + Vite + Express + PostgreSQL + Drizzle + OpenAI + Zustand
 - **Deployment:** Live and running
+- **Retention target:** 40% of beta users return within 7 days of first session (industry benchmark for coding tools: 15–25%). We validate this with a cohort test: 50 users, 2-week free access, then a 5-day gap, then measure return rate.
 - **Next milestone:** Onboard first 100 beta users, validate retention
 
 ## 9. Fundraising ask

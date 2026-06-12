@@ -1,0 +1,31 @@
+kind = "slides"
+previewPath = "/pitch-deck/"
+title = "B.L.U.E.-J. Pitch Deck"
+version = "1.0.0"
+id = "artifacts/bluej-pitch"
+router = "path"
+
+[[integratedSkills]]
+name = "slides"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/pitch-deck/" ]
+localPort = 26205
+
+[services.development]
+run = "pnpm --filter @workspace/bluej-pitch run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/bluej-pitch", "run", "build" ]
+publicDir = "artifacts/bluej-pitch/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "26205"
+BASE_PATH = "/pitch-deck/"
