@@ -152,8 +152,8 @@ export const useBlueJStore = create<BlueJState>()(
       activeTab: 'chat',
       myCode: "# Your code goes here...\n\nprint('Hello, J.')",
       learnerMode: 'adult-beginner',
-      diagnosticDone: true,
-      tutorialDone: true,
+      diagnosticDone: false,
+      tutorialDone: false,
       simHardwareProfile: 'auto',
       chapterSummaries: [],
       messages: [{
