@@ -1,7 +1,7 @@
 import { motion } from 'framer-motion';
 import { useProgressStore } from '@/lib/progress-store';
 import { useLeaderboardStore, getLeaderboardRank } from '@/lib/leaderboard-store';
-import { Award, Trophy } from 'lucide-react';
+import { Award, Trophy, Brain, Zap } from 'lucide-react';
 
 const RARITY_STYLES = {
   common:    { border: 'border-gray-500/30',   bg: 'bg-gray-500/5',   text: 'text-gray-400' },
@@ -87,6 +87,42 @@ export function AchievementsPanel() {
             <div className="text-2xl font-bold text-primary font-display">{unlockedAchievements.length}/{achievements.length}</div>
             <div className="text-[10px] text-primary/40 uppercase font-hud tracking-wider">Achievements</div>
           </div>
+        </div>
+
+        {/* Concept Mastery */}
+        <div className="bg-secondary/50 rounded-sm p-3 border border-primary/20">
+          <div className="flex items-center gap-2 mb-2">
+            <Brain className="w-4 h-4 text-purple-400" />
+            <h3 className="text-xs font-bold text-purple-400/70 uppercase tracking-widest font-hud">Concept Mastery</h3>
+          </div>
+          <div className="flex items-center gap-3 mb-2">
+            <div className="flex-1">
+              <div className="flex justify-between text-[10px] text-primary/60 font-hud mb-1">
+                <span>Overall Mastery</span>
+                <span>{stats.conceptsMastered.filter(c => c.mastered).length}/{stats.conceptsMastered.length} concepts</span>
+              </div>
+              <div className="w-full h-2 bg-background/80 rounded-full overflow-hidden">
+                <motion.div
+                  className="h-full bg-gradient-to-r from-purple-500/80 to-purple-400/60 rounded-full"
+                  animate={{ width: `${stats.conceptsMastered.length > 0 ? Math.round(stats.conceptsMastered.reduce((s, c) => s + c.proficiency, 0) / stats.conceptsMastered.length) : 0}%` }}
+                />
+              </div>
+            </div>
+          </div>
+          {stats.conceptsMastered.length > 0 && (
+            <div className="flex flex-col gap-1.5 max-h-32 overflow-y-auto">
+              {stats.conceptsMastered.map((c) => (
+                <div key={c.conceptId} className="flex items-center gap-2 text-[10px] font-hud">
+                  <Zap className={`w-3 h-3 ${c.mastered ? 'text-yellow-400' : 'text-primary/20'}`} />
+                  <span className="flex-1 text-primary/70 truncate">{c.conceptId.replace(/^p(\d+)t(\d+)$/, 'Phase $1, Task $2')}</span>
+                  <span className={`${c.mastered ? 'text-yellow-400' : 'text-primary/40'}`}>{c.proficiency}%</span>
+                  <div className="w-16 h-1 bg-background/80 rounded-full overflow-hidden">
+                    <div className="h-full bg-purple-400/60 rounded-full" style={{ width: `${c.proficiency}%` }} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         {nextMilestones.length > 0 && (

@@ -266,6 +266,13 @@ export function IdePanel() {
       });
       const data = await resp.json();
       setExecResult({ ...data, executedAt: new Date().toISOString() });
+      // Track concept mastery on successful execution
+      if (data.exitCode === 0 && !data.stderr) {
+        const phaseId = useBlueJStore.getState().phaseIndex;
+        const taskId = useBlueJStore.getState().taskIndex;
+        const conceptId = `p${phaseId}t${taskId}`;
+        useProgressStore.getState().trackConceptAttempt(conceptId, true);
+      }
     } catch {
       setExecResult({
         stdout: '', stderr: 'Connection error — execution unavailable.',

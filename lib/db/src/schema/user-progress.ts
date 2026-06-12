@@ -8,6 +8,7 @@ export const userProgressTable = pgTable("user_progress", {
   currentPhase: integer("current_phase").notNull().default(0),
   currentTask: integer("current_task").notNull().default(0),
   completedTasks: jsonb("completed_tasks").notNull().default([]),
+  conceptsMastered: jsonb("concepts_mastered").notNull().default([]),
   selectedLanguage: text("selected_language").notNull().default("python"),
   selectedOs: text("selected_os").notNull().default("linux"),
   conversationId: integer("conversation_id"),

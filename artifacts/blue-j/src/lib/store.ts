@@ -3,7 +3,7 @@ import { persist } from 'zustand/middleware';
 import { v4 as uuidv4 } from 'uuid';
 
 export type OperatingSystem = 'windows' | 'macos' | 'linux' | 'android' | 'ios';
-export type ProgrammingLanguage = 'python' | 'cpp' | 'javascript';
+export type ProgrammingLanguage = 'python' | 'cpp' | 'c' | 'javascript';
 export type LearnerMode = 'kids' | 'teen' | 'adult-beginner' | 'advanced';
 export type SimHardwareProfile = 'auto' | 'high-end' | 'mid-range' | 'budget-laptop' | 'raspberry-pi' | 'cloud-gpu';
 

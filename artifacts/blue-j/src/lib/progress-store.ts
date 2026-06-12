@@ -29,7 +29,7 @@ export interface Milestone {
   description: string;
   icon: string;
   requirement: number;
-  type: 'xp' | 'sessions' | 'lines_written' | 'questions_asked' | 'projects_saved' | 'streak_days' | 'challenges_completed';
+  type: 'xp' | 'sessions' | 'lines_written' | 'questions_asked' | 'projects_saved' | 'streak_days' | 'challenges_completed' | 'concepts_mastered';
   unlocked: boolean;
   unlockedAt?: number;
 }
@@ -49,6 +49,17 @@ export interface StreakInfo {
   lastActiveDate: string;
 }
 
+export interface ConceptProgress {
+  conceptId: string;
+  name: string;
+  category: string;
+  proficiency: number; // 0-100
+  testsPassed: number;
+  testsTotal: number;
+  lastAttempted: number;
+  mastered: boolean;
+}
+
 export interface ProgressStats {
   totalXp: number;
   level: number;
@@ -59,6 +70,7 @@ export interface ProgressStats {
   challengesCompleted: number;
   languagesUsed: string[];
   modesUsed: string[];
+  conceptsMastered: ConceptProgress[];
 }
 
 const GOAL_TEMPLATES: Omit<DailyGoal, 'id' | 'current' | 'completed' | 'dateKey'>[] = [
@@ -99,6 +111,9 @@ const MILESTONES: Omit<Milestone, 'unlocked' | 'unlockedAt'>[] = [
   { id: 'streak_30',  title: 'Monthly Master',    description: '30-day streak',          icon: '🏆',  requirement: 30,    type: 'streak_days' },
   { id: 'proj_5',     title: 'Portfolio Started', description: 'Save 5 projects',        icon: '💾',  requirement: 5,     type: 'projects_saved' },
   { id: 'proj_25',    title: 'Portfolio Pro',     description: 'Save 25 projects',       icon: '🗂️', requirement: 25,    type: 'projects_saved' },
+  { id: 'concept_3',   title: 'Concept Explorer',  description: 'Master 3 CS concepts',  icon: '🧪', requirement: 3,     type: 'concepts_mastered' },
+  { id: 'concept_10',  title: 'Theory Expert',     description: 'Master 10 CS concepts', icon: '🎓', requirement: 10,    type: 'concepts_mastered' },
+  { id: 'concept_20',  title: 'CS Scholar',        description: 'Master 20 CS concepts', icon: '📚', requirement: 20,    type: 'concepts_mastered' },
 ];
 
 const ACHIEVEMENT_DEFS: Omit<Achievement, 'unlockedAt'>[] = [
@@ -107,7 +122,7 @@ const ACHIEVEMENT_DEFS: Omit<Achievement, 'unlockedAt'>[] = [
   { id: 'first_save',     title: 'Saver',               description: 'Saved your first project',        icon: '💾', rarity: 'common' },
   { id: 'night_owl',      title: 'Night Owl',           description: 'Coded after midnight',            icon: '🦉', rarity: 'rare' },
   { id: 'early_bird',     title: 'Early Bird',          description: 'Coded before 6 AM',               icon: '🐦', rarity: 'rare' },
-  { id: 'polyglot',       title: 'Polyglot',            description: 'Used all 3 languages',            icon: '🌐', rarity: 'rare' },
+  { id: 'polyglot',       title: 'Polyglot',            description: 'Used all 4 languages',            icon: '🌐', rarity: 'rare' },
   { id: 'all_modes',      title: 'Shapeshifter',        description: 'Tried all learner modes',         icon: '🎭', rarity: 'rare' },
   { id: '5_goals_day',    title: 'Perfect Day',         description: 'Completed all 5 daily goals',     icon: '✨', rarity: 'rare' },
   { id: 'streak_14',      title: 'Two Week Titan',      description: '14-day streak',                   icon: '⚡', rarity: 'epic' },
@@ -177,6 +192,9 @@ interface ProgressState {
   clearNewUnlocks: () => void;
   checkAchievements: () => void;
   checkMilestones: () => void;
+  trackConceptAttempt: (conceptId: string, passed: boolean) => void;
+  getConceptProgress: (conceptId: string) => ConceptProgress | undefined;
+  getOverallMastery: () => number;
 }
 
 export const useProgressStore = create<ProgressState>()(
@@ -192,6 +210,7 @@ export const useProgressStore = create<ProgressState>()(
         challengesCompleted: 0,
         languagesUsed: [],
         modesUsed: [],
+        conceptsMastered: [],
       },
       streak: { currentStreak: 0, longestStreak: 0, lastActiveDate: '' },
       dailyGoals: [],
@@ -270,6 +289,59 @@ export const useProgressStore = create<ProgressState>()(
 
       clearNewUnlocks: () => set({ newUnlocks: [] }),
 
+      trackConceptAttempt: (conceptId, passed) => {
+        const { stats } = get();
+        const existing = stats.conceptsMastered.find((c) => c.conceptId === conceptId);
+        const updated = [...stats.conceptsMastered];
+        if (existing) {
+          const idx = updated.findIndex((c) => c.conceptId === conceptId);
+          const testsPassed = existing.testsPassed + (passed ? 1 : 0);
+          const testsTotal = existing.testsTotal + 1;
+          const proficiency = Math.min(Math.round((testsPassed / testsTotal) * 100), 100);
+          updated[idx] = {
+            ...existing,
+            testsPassed,
+            testsTotal,
+            proficiency,
+            lastAttempted: Date.now(),
+            mastered: proficiency >= 80,
+          };
+        } else {
+          updated.push({
+            conceptId,
+            name: conceptId,
+            category: 'CS Fundamentals',
+            proficiency: passed ? 100 : 0,
+            testsPassed: passed ? 1 : 0,
+            testsTotal: 1,
+            lastAttempted: Date.now(),
+            mastered: passed,
+          });
+        }
+        set({ stats: { ...stats, conceptsMastered: updated } });
+        setTimeout(() => get().checkAchievements(), 100);
+        // Sync to backend (best-effort)
+        const sessionId = localStorage.getItem('bluej-session-id');
+        if (sessionId) {
+          fetch('/api/bluej/chat/progress', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ sessionId, conceptsMastered: updated }),
+          }).catch(() => {});
+        }
+      },
+
+      getConceptProgress: (conceptId) => {
+        return get().stats.conceptsMastered.find((c) => c.conceptId === conceptId);
+      },
+
+      getOverallMastery: () => {
+        const { conceptsMastered } = get().stats;
+        if (conceptsMastered.length === 0) return 0;
+        const total = conceptsMastered.reduce((sum, c) => sum + c.proficiency, 0);
+        return Math.round(total / conceptsMastered.length);
+      },
+
       checkMilestones: () => {
         const { milestones, stats, streak } = get();
         const unlocks: string[] = [];
@@ -284,6 +356,7 @@ export const useProgressStore = create<ProgressState>()(
             case 'projects_saved': val = stats.totalProjectsSaved; break;
             case 'streak_days': val = streak.currentStreak; break;
             case 'challenges_completed': val = stats.challengesCompleted; break;
+            case 'concepts_mastered': val = stats.conceptsMastered.filter(c => c.mastered).length; break;
           }
           if (val >= m.requirement) {
             unlocks.push(m.id);
@@ -307,7 +380,7 @@ export const useProgressStore = create<ProgressState>()(
             case 'first_save': earned = stats.totalProjectsSaved >= 1; break;
             case 'night_owl': earned = hour >= 0 && hour < 5 && stats.totalLinesWritten > 0; break;
             case 'early_bird': earned = hour >= 4 && hour < 6 && stats.totalLinesWritten > 0; break;
-            case 'polyglot': earned = stats.languagesUsed.length >= 3; break;
+            case 'polyglot': earned = stats.languagesUsed.length >= 4; break;
             case 'all_modes': earned = stats.modesUsed.length >= 4; break;
             case '5_goals_day': earned = get().dailyGoals.length === 5 && get().dailyGoals.every((g) => g.completed); break;
             case 'streak_14': earned = streak.currentStreak >= 14; break;
@@ -316,6 +389,10 @@ export const useProgressStore = create<ProgressState>()(
             case 'level_25': earned = stats.level >= 25; break;
             case '1000_lines': earned = stats.totalLinesWritten >= 1000; break;
             case '10k_xp': earned = stats.totalXp >= 10000; break;
+          }
+          if (a.id.startsWith('concept_')) {
+            const required = parseInt(a.id.split('_')[1], 10);
+            earned = stats.conceptsMastered.filter(c => c.mastered).length >= required;
           }
           if (earned) {
             unlocks.push(a.id);

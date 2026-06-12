@@ -51,10 +51,21 @@ const CPP_BLOCKLIST = [
   /\bfork\s*\(/,
 ];
 
+const C_BLOCKLIST = [
+  /#include\s*<\s*sys\/socket\.h\s*>/,
+  /#include\s*<\s*netinet\/in\.h\s*>/,
+  /#include\s*<\s*arpa\/inet\.h\s*>/,
+  /\bsystem\s*\(/,
+  /\bpopen\s*\(/,
+  /\bexecv[pe]?\s*\(/,
+  /\bfork\s*\(/,
+];
+
 const LANG_BLOCKLISTS: Record<string, RegExp[]> = {
   python: PYTHON_BLOCKLIST,
   javascript: JS_BLOCKLIST,
   cpp: CPP_BLOCKLIST,
+  c: C_BLOCKLIST,
 };
 
 function checkSafety(code: string, language: string): string | null {
@@ -70,6 +81,7 @@ function checkSafety(code: string, language: string): string | null {
 // ─── Local execution ─────────────────────────────────────────────────────────
 const PYTHON_BIN = process.env.PYTHON_BIN || "/nix/store/flbj8bq2vznkcwss7sm0ky8rd0k6kar7-python-wrapped-0.1.0/bin/python3";
 const GPP_BIN    = process.env.GPP_BIN    || "/nix/store/b11ycf80cxi2iyrga8rkq1wzdinmax18-replit-runtime-path/bin/g++";
+const GCC_BIN    = process.env.GCC_BIN    || "/nix/store/b11ycf80cxi2iyrga8rkq1wzdinmax18-replit-runtime-path/bin/gcc";
 const NODE_BIN   = process.env.NODE_BIN    || process.execPath;
 const EXEC_TIMEOUT_MS = 10_000;
 const MAX_OUTPUT_BYTES = 64 * 1024; // 64KB
@@ -134,7 +146,7 @@ router.post("/", async (req, res) => {
     return;
   }
 
-  const supportedLangs = ["python", "javascript", "cpp"];
+  const supportedLangs = ["python", "javascript", "cpp", "c"];
   if (!supportedLangs.includes(language)) {
     res.status(400).json({ error: `Unsupported language: ${language}` });
     return;
@@ -178,6 +190,20 @@ router.post("/", async (req, res) => {
       const bin = join(TMP_DIR, `${id}.out`);
       await writeFile(src, code, "utf-8");
       const compile = await spawnProcess(GPP_BIN, ["-O2", "-std=c++17", "-o", bin, src, "-Wall"]);
+      await unlink(src).catch(() => {});
+      if (compile.exitCode !== 0) {
+        res.json({ ...compile, phase: "compile", engine: "server" });
+        return;
+      }
+      const run = await spawnProcess(bin, []);
+      await unlink(bin).catch(() => {});
+      res.json({ ...run, phase: "run", engine: "server" });
+
+    } else if (language === "c") {
+      const src = join(TMP_DIR, `${id}.c`);
+      const bin = join(TMP_DIR, `${id}.out`);
+      await writeFile(src, code, "utf-8");
+      const compile = await spawnProcess(GCC_BIN, ["-O2", "-std=c99", "-o", bin, src, "-Wall"]);
       await unlink(src).catch(() => {});
       if (compile.exitCode !== 0) {
         res.json({ ...compile, phase: "compile", engine: "server" });

@@ -12,3 +12,9 @@ id = "vNVb0A32X0GkPAJ9BUDXh"
 uri = "file://.local/outputs/bluejgenesis-com.pdf"
 type = "pdf"
 title = "bluejgenesis.com.pdf"
+
+[[outputs]]
+id = "PbFZsFOtG-FW6O6snnf9D"
+uri = "file://.local/outputs/bluejgenesis-com.pptx"
+type = "slides"
+title = "bluejgenesis.com.pptx"

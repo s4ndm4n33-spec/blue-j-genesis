@@ -32,6 +32,7 @@ export function HudHeader({ onOpenTutorial }: HudHeaderProps) {
   const languages: { id: ProgrammingLanguage; label: string; tip: string }[] = [
     { id: 'python', label: 'PY', tip: 'Python 3.x — recommended for beginners and ML work' },
     { id: 'cpp', label: 'C++', tip: 'C++17 — systems programming, performance-critical code' },
+    { id: 'c', label: 'C', tip: 'C99 — low-level systems, embedded, hardware' },
     { id: 'javascript', label: 'JS', tip: 'JavaScript (ES2022+, Node.js) — web and scripting' },
   ];
 

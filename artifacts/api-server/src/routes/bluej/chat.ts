@@ -519,4 +519,25 @@ router.get("/:conversationId/export", async (req, res) => {
   }
 });
 
+router.post("/progress", async (req, res) => {
+  try {
+    const { sessionId, conceptsMastered } = req.body;
+    if (!sessionId || !Array.isArray(conceptsMastered)) {
+      return res.status(400).json({ error: "Missing sessionId or conceptsMastered array" });
+    }
+    const [existing] = await db.select().from(userProgressTable).where(eq(userProgressTable.sessionId, sessionId));
+    if (existing) {
+      await db.update(userProgressTable).set({
+        conceptsMastered,
+        updatedAt: new Date(),
+      }).where(eq(userProgressTable.id, existing.id));
+      return res.json({ ok: true, updated: true });
+    }
+    return res.status(404).json({ error: "Session not found" });
+  } catch (err) {
+    req.log.error({ err }, "Progress update error");
+    res.status(500).json({ error: "Progress update failed" });
+  }
+});
+
 export default router;
