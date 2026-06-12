@@ -6,3 +6,9 @@ id = "chY2eNsopvBl8_xZZIw5p"
 uri = "file://PITCH.md"
 type = "text"
 title = "B.L.U.E.-J. Investor Pitch Deck"
+
+[[outputs]]
+id = "vNVb0A32X0GkPAJ9BUDXh"
+uri = "file://.local/outputs/bluejgenesis-com.pdf"
+type = "pdf"
+title = "bluejgenesis.com.pdf"
