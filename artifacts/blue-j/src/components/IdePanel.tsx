@@ -19,6 +19,7 @@ const LANG_MAP: Record<string, string> = {
   javascript: 'javascript', js: 'javascript',
   typescript: 'typescript', ts: 'typescript',
   cpp: 'cpp', 'c++': 'cpp', c: 'c',
+  gcode: 'gcode', gc: 'gcode',
 };
 
 function extractCodeBlock(content: string): { code: string; lang: string } {

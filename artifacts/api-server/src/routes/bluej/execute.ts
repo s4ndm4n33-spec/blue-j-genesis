@@ -61,11 +61,14 @@ const C_BLOCKLIST = [
   /\bfork\s*\(/,
 ];
 
+const GCODE_BLOCKLIST: RegExp[] = [];
+
 const LANG_BLOCKLISTS: Record<string, RegExp[]> = {
   python: PYTHON_BLOCKLIST,
   javascript: JS_BLOCKLIST,
   cpp: CPP_BLOCKLIST,
   c: C_BLOCKLIST,
+  gcode: GCODE_BLOCKLIST,
 };
 
 function checkSafety(code: string, language: string): string | null {
@@ -146,7 +149,7 @@ router.post("/", async (req, res) => {
     return;
   }
 
-  const supportedLangs = ["python", "javascript", "cpp", "c"];
+  const supportedLangs = ["python", "javascript", "cpp", "c", "gcode"];
   if (!supportedLangs.includes(language)) {
     res.status(400).json({ error: `Unsupported language: ${language}` });
     return;
@@ -212,6 +215,42 @@ router.post("/", async (req, res) => {
       const run = await spawnProcess(bin, []);
       await unlink(bin).catch(() => {});
       res.json({ ...run, phase: "run", engine: "server" });
+
+    } else if (language === "gcode") {
+      const f = join(TMP_DIR, `${id}.nc`);
+      await writeFile(f, code, "utf-8");
+      // G-code is a descriptive language; we validate and simulate
+      const lines = code.split("\n").map(l => l.trim()).filter(l => l && !l.startsWith("("));
+      const issues: string[] = [];
+      const axes: Record<string, number> = {};
+      for (const line of lines) {
+        const cmd = line.split(" ")[0];
+        const args = line.split(" ").slice(1);
+        if (!/^[GM]\d+(?:\.\d+)?$/.test(cmd)) {
+          issues.push(`Unrecognized command: ${cmd}`);
+        }
+        for (const arg of args) {
+          if (!/^[A-Z][-+]?\d+(?:\.\d+)?$/.test(arg)) {
+            issues.push(`Invalid argument: ${arg} in line ${line}`);
+          }
+        }
+        if (cmd === "G1" || cmd === "G0") {
+          for (const arg of args) {
+            const axis = arg[0];
+            const val = parseFloat(arg.slice(1));
+            if (!isNaN(val)) axes[axis] = val;
+          }
+        }
+      }
+      await unlink(f).catch(() => {});
+      const stdout = [
+        `G-code parsed: ${lines.length} valid lines`,
+        `Commands found: ${[...new Set(lines.map(l => l.split(" ")[0]))].join(", ")}`,
+        `Final position: ${Object.entries(axes).map(([k, v]) => `${k}${v.toFixed(2)}`).join(" ")}`,
+        issues.length ? `\nWarnings: ${issues.join("; ")}` : "",
+        "\n[G-code is a control language for CNC/3D printers — validated, not compiled]",
+      ].join("\n");
+      res.json({ stdout, stderr: "", exitCode: issues.length > 0 ? 1 : 0, runtimeMs: 0, timedOut: false, phase: "validate", engine: "simulator" });
     }
   } catch (err) {
     req.log.error({ err }, "Execute error");

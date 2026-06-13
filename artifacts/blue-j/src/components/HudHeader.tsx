@@ -34,6 +34,7 @@ export function HudHeader({ onOpenTutorial }: HudHeaderProps) {
     { id: 'cpp', label: 'C++', tip: 'C++17 — systems programming, performance-critical code' },
     { id: 'c', label: 'C', tip: 'C99 — low-level systems, embedded, hardware' },
     { id: 'javascript', label: 'JS', tip: 'JavaScript (ES2022+, Node.js) — web and scripting' },
+    { id: 'gcode', label: 'GC', tip: 'G-code — CNC, 3D printing, manufacturing control' },
   ];
 
   const osList: { id: OperatingSystem; label: string; tip: string }[] = [
