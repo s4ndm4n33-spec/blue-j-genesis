@@ -1,0 +1,1114 @@
+spec_version: "1.0"
+title: "B.L.U.E.-J. — Hot-Patch Self-Modification & Code Executor Sandbox Migration"
+author: "fable 5"
+created: "2026-06-13T19:31:35Z"
+status: "proposed"
+machine_readable: true
+notes: >-
+  This is an implementation specification, not applied code. Every diff is a real,
+  complete change against the current source (no stubs, no placeholders). Apply in the
+  order given by `rollout`. Two independent subsystems are specified:
+  (1) hot_patch_system — wire the unused j_config table into a live runtime-config
+  system so J. / an admin can change behaviour with NO rebuild or restart; and
+  (2) sandbox_migration — replace the regex blocklist as the PRIMARY isolation
+  boundary with OS-level sandboxing (bubblewrap → unshare → blocklist fallback),
+  with an external-isolation-service escalation path.
+
+review_notes:
+  reviewed_by: "architect (code_review) on 2026-06-13"
+  resolved:
+    - "Agent config tools (config_get/set/history) are now gated SERVER-SIDE via x-admin-key === ADMIN_AGENT_PASSWORD in agent.ts. /api/bluej/agent is otherwise unauthenticated (unlock only returns a boolean to the client), so UI-only gating was insufficient."
+    - "Loose diff hunks for chat.ts and agent.ts tightened to real anchored unified hunks (agent.ts dispatch is a switch, not else-if)."
+    - "Sandbox honesty: the unshare tier provides process/network/resource isolation but NOT filesystem isolation; threat_model and engine comments corrected. detectEngine now runs a real capability probe (userns may be disabled even when the binary exists) and fails safe to the next tier."
+    - "Piston (option_b) now short-circuits BEFORE prepareProgram in grade.ts/execute.ts, so C/C++ never compiles or runs on-host when an external service is configured."
+  verified_false_positive:
+    - "Architect claimed grade.ts leaks quiz answer keys (it inspected only gradeQuiz, line 132). Verified the POST handler strips correctOptionId/explanation at lines 249-256 unless (mastered || question.passed). The Session 11 migration-log claim is therefore ACCURATE and was left unchanged."
+
+environment_assumptions:
+  monorepo: "pnpm v10+ workspace"
+  backend: "artifacts/api-server — Express 5 + Drizzle ORM (PostgreSQL), ESM (.js import specifiers)"
+  frontend: "artifacts/blue-j — React 19 + Vite + Zustand + TanStack Query"
+  db_lib: "lib/db — Drizzle schema barrel at lib/db/src/schema/index.ts; drizzle-zod + zod/v4 available"
+  secret_available: "ADMIN_AGENT_PASSWORD (already used by Agent Mode unlock in agent.ts)"
+  toolchain_present: ["unshare", "prlimit", "setpriv"]   # util-linux, verified present
+  toolchain_absent: ["bwrap", "nsjail", "firejail"]      # verified absent — must be installed for tier-1
+  hard_constraint: "Replit does NOT support Docker/containers; isolation must work in-container or via a remote service."
+  userns_caveat: >-
+    Both bwrap and unshare require unprivileged user namespaces (CONFIG_USER_NS) to be
+    permitted by the host. If the host forbids them, tier-1/tier-2 will fail at runtime;
+    the engine MUST fail safe to the blocklist tier and log loudly. When OS namespaces are
+    unavailable, use sandbox_migration.option_b (external isolation service) for a true boundary.
+
+# ===========================================================================
+# SUBSYSTEM 1 — HOT-PATCH SELF-MODIFICATION (runtime config, no rebuild)
+# ===========================================================================
+hot_patch_system:
+  goal: >-
+    Let J. (in Agent Mode) and an admin change runtime behaviour — model, temperature,
+    persona directive, workspace size, safety toggle, exec timeout, exec engine — WITHOUT
+    editing source and waiting for a rebuild/restart. agent.ts already has self_write, but
+    its own manifest admits "changes take effect after the next server build+restart." This
+    closes that gap: config lives in the existing (currently unwired) j_config table, is read
+    through a cached service, and a write takes effect on the very next request.
+  design:
+    storage: "Existing jConfig table (key/value/version/updatedAt). Add a jConfigHistory table for versioned rollback."
+    caching: "In-memory Map in the service, TTL-refreshed (30s) and invalidated immediately on every write."
+    auth: "x-admin-key header compared to ADMIN_AGENT_PASSWORD (same secret as Agent unlock). 503 if secret unset; 401 if mismatch."
+    typed_defaults: "CONFIG_DEFAULTS in the service is the source of truth for known keys + safe fallbacks; unknown DB keys are still served."
+    self_modification: "agent.ts gains config_get / config_set / config_history tools so J. can hot-patch itself live."
+
+  files:
+    - path: "lib/db/src/schema/index.ts"
+      action: modify
+      reason: "Export the j-config tables from the schema barrel so @workspace/db re-exports them."
+      diff: |
+        --- a/lib/db/src/schema/index.ts
+        +++ b/lib/db/src/schema/index.ts
+        @@
+         export * from "./conversations";
+         export * from "./messages";
+         export * from "./user-progress";
+         export * from "./git-repos";
+        +export * from "./j-config";
+
+    - path: "lib/db/src/schema/j-config.ts"
+      action: modify
+      reason: "Add a history table for rollback, plus an insert zod schema and exported types."
+      diff: |
+        --- a/lib/db/src/schema/j-config.ts
+        +++ b/lib/db/src/schema/j-config.ts
+        @@
+        -import { pgTable, text, integer, timestamp } from "drizzle-orm/pg-core";
+        +import { pgTable, text, integer, timestamp } from "drizzle-orm/pg-core";
+        +import { createInsertSchema } from "drizzle-zod";
+        +import { z } from "zod/v4";
+
+         export const jConfig = pgTable("j_config", {
+           id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+           configKey: text("config_key").notNull().unique(),
+           configValue: text("config_value").notNull(),
+           description: text("description"),
+           version: integer("version").notNull().default(1),
+           updatedAt: timestamp("updated_at").notNull().defaultNow(),
+         });
+
+        +// Append-only audit trail: one row per write, enabling versioned rollback.
+        +export const jConfigHistory = pgTable("j_config_history", {
+        +  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+        +  configKey: text("config_key").notNull(),
+        +  configValue: text("config_value").notNull(),
+        +  version: integer("version").notNull(),
+        +  changedBy: text("changed_by").notNull().default("admin"),
+        +  changedAt: timestamp("changed_at").notNull().defaultNow(),
+        +});
+        +
+        +export const insertJConfigSchema = createInsertSchema(jConfig).omit({
+        +  id: true,
+        +  updatedAt: true,
+        +});
+        +export type InsertJConfig = z.infer<typeof insertJConfigSchema>;
+         export type JConfigRow = typeof jConfig.$inferSelect;
+        +export type JConfigHistoryRow = typeof jConfigHistory.$inferSelect;
+
+    - path: "artifacts/api-server/src/routes/bluej/j-config-service.ts"
+      action: create
+      reason: "Cached read/write service. Reads served from memory; writes bump version, append history, invalidate cache."
+      full_content: |
+        // Runtime hot-patch config service for B.L.U.E.-J.
+        // DB-backed key/value config that changes live — no rebuild, no restart.
+        // Reads are served from an in-memory cache (TTL-refreshed and invalidated on
+        // every write), so a hot-patch takes effect on the very next request.
+        import { db } from "@workspace/db";
+        import { jConfig, jConfigHistory } from "@workspace/db";
+        import { eq, desc } from "drizzle-orm";
+
+        // Known, hot-patchable keys with safe defaults. getConfig falls back to these
+        // when the DB has no row yet. Unknown DB keys are still served (see getConfig).
+        export const CONFIG_DEFAULTS = {
+          "chat.model.default": "gpt-5.2",
+          "chat.model.byok": "gpt-4o",
+          "chat.temperature.byok": "0.7",
+          "chat.persona.suffix": "",
+          "chat.workspace.maxChars": "15000",
+          "safety.antiUltron.enabled": "true",
+          "exec.timeoutMs": "10000",
+          "exec.engine.preferred": "auto",
+        } as const;
+
+        export type ConfigKey = keyof typeof CONFIG_DEFAULTS;
+
+        interface CacheEntry {
+          value: string;
+          version: number;
+        }
+        const cache = new Map<string, CacheEntry>();
+        let cacheLoadedAt = 0;
+        const CACHE_TTL_MS = 30_000;
+
+        async function refreshCache(): Promise<void> {
+          const rows = await db.select().from(jConfig);
+          cache.clear();
+          for (const r of rows) {
+            cache.set(r.configKey, { value: r.configValue, version: r.version });
+          }
+          cacheLoadedAt = Date.now();
+        }
+
+        async function ensureCache(): Promise<void> {
+          if (Date.now() - cacheLoadedAt > CACHE_TTL_MS) await refreshCache();
+        }
+
+        export async function getConfig(key: ConfigKey | string): Promise<string> {
+          await ensureCache();
+          const hit = cache.get(key);
+          if (hit) return hit.value;
+          return (CONFIG_DEFAULTS as Record<string, string>)[key] ?? "";
+        }
+
+        export async function getNumber(key: ConfigKey, fallback: number): Promise<number> {
+          const n = Number(await getConfig(key));
+          return Number.isFinite(n) ? n : fallback;
+        }
+
+        export async function getBool(key: ConfigKey): Promise<boolean> {
+          return (await getConfig(key)).toLowerCase() === "true";
+        }
+
+        export async function getAll(): Promise<
+          Array<{ key: string; value: string; version: number; isDefault: boolean }>
+        > {
+          await refreshCache();
+          const keys = new Set<string>([...Object.keys(CONFIG_DEFAULTS), ...cache.keys()]);
+          return [...keys]
+            .map((k) => {
+              const hit = cache.get(k);
+              return {
+                key: k,
+                value: hit ? hit.value : (CONFIG_DEFAULTS as Record<string, string>)[k] ?? "",
+                version: hit ? hit.version : 0,
+                isDefault: !hit,
+              };
+            })
+            .sort((a, b) => a.key.localeCompare(b.key));
+        }
+
+        export async function setConfig(
+          key: string,
+          value: string,
+          changedBy = "admin",
+        ): Promise<{ key: string; value: string; version: number }> {
+          const existing = (
+            await db.select().from(jConfig).where(eq(jConfig.configKey, key))
+          )[0];
+          const nextVersion = (existing?.version ?? 0) + 1;
+          if (existing) {
+            await db
+              .update(jConfig)
+              .set({ configValue: value, version: nextVersion, updatedAt: new Date() })
+              .where(eq(jConfig.configKey, key));
+          } else {
+            await db
+              .insert(jConfig)
+              .values({ configKey: key, configValue: value, version: nextVersion });
+          }
+          await db
+            .insert(jConfigHistory)
+            .values({ configKey: key, configValue: value, version: nextVersion, changedBy });
+          cache.set(key, { value, version: nextVersion }); // immediate invalidation
+          return { key, value, version: nextVersion };
+        }
+
+        export async function deleteConfig(key: string): Promise<boolean> {
+          await db.delete(jConfig).where(eq(jConfig.configKey, key));
+          cache.delete(key);
+          return true;
+        }
+
+        export async function getHistory(
+          key: string,
+          limit = 20,
+        ): Promise<Array<{ value: string; version: number; changedBy: string; changedAt: Date }>> {
+          const rows = await db
+            .select()
+            .from(jConfigHistory)
+            .where(eq(jConfigHistory.configKey, key))
+            .orderBy(desc(jConfigHistory.version))
+            .limit(limit);
+          return rows.map((r) => ({
+            value: r.configValue,
+            version: r.version,
+            changedBy: r.changedBy,
+            changedAt: r.changedAt,
+          }));
+        }
+
+        export async function rollback(
+          key: string,
+          toVersion: number,
+          changedBy = "admin",
+        ): Promise<{ key: string; value: string; version: number } | null> {
+          const target = (
+            await db.select().from(jConfigHistory).where(eq(jConfigHistory.configKey, key))
+          ).find((r) => r.version === toVersion);
+          if (!target) return null;
+          return setConfig(key, target.configValue, `${changedBy} (rollback->v${toVersion})`);
+        }
+
+    - path: "artifacts/api-server/src/routes/bluej/j-config.ts"
+      action: create
+      reason: "Admin-gated CRUD + history + rollback route for the hot-patch config."
+      full_content: |
+        import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
+        import {
+          getAll,
+          setConfig,
+          deleteConfig,
+          getHistory,
+          rollback,
+          CONFIG_DEFAULTS,
+        } from "./j-config-service.js";
+
+        const router: IRouter = Router();
+
+        const ADMIN_AGENT_PASSWORD = process.env.ADMIN_AGENT_PASSWORD || "";
+
+        // Admin gate — reuses the same secret as Agent Mode unlock. Key travels in the
+        // x-admin-key header and is never logged.
+        function requireAdmin(req: Request, res: Response, next: NextFunction): void {
+          if (!ADMIN_AGENT_PASSWORD) {
+            res.status(503).json({ error: "Hot-patch disabled: ADMIN_AGENT_PASSWORD is not configured." });
+            return;
+          }
+          const key = req.header("x-admin-key");
+          if (!key || key !== ADMIN_AGENT_PASSWORD) {
+            res.status(401).json({ error: "Unauthorized: valid admin key required." });
+            return;
+          }
+          next();
+        }
+
+        router.use(requireAdmin);
+
+        router.get("/", async (_req, res) => {
+          res.json({ config: await getAll(), defaults: CONFIG_DEFAULTS });
+        });
+
+        router.put("/:key", async (req, res) => {
+          const key = req.params.key;
+          const { value } = req.body as { value?: unknown };
+          if (typeof value !== "string") {
+            res.status(400).json({ error: "Body must include a string 'value'." });
+            return;
+          }
+          if (value.length > 8000) {
+            res.status(400).json({ error: "Value too large (8KB limit)." });
+            return;
+          }
+          const result = await setConfig(key, value, "admin");
+          req.log.info({ key, version: result.version }, "j-config hot-patched");
+          res.json(result);
+        });
+
+        router.delete("/:key", async (req, res) => {
+          await deleteConfig(req.params.key);
+          res.json({ key: req.params.key, deleted: true });
+        });
+
+        router.get("/:key/history", async (req, res) => {
+          res.json({ key: req.params.key, history: await getHistory(req.params.key) });
+        });
+
+        router.post("/:key/rollback", async (req, res) => {
+          const { version } = req.body as { version?: number };
+          if (typeof version !== "number") {
+            res.status(400).json({ error: "Body must include a numeric 'version'." });
+            return;
+          }
+          const result = await rollback(req.params.key, version, "admin");
+          if (!result) {
+            res.status(404).json({ error: `No history entry for version ${version}.` });
+            return;
+          }
+          res.json(result);
+        });
+
+        export default router;
+
+    - path: "artifacts/api-server/src/routes/bluej/index.ts"
+      action: modify
+      reason: "Mount the hot-patch route under /api/bluej/j-config."
+      diff: |
+        --- a/artifacts/api-server/src/routes/bluej/index.ts
+        +++ b/artifacts/api-server/src/routes/bluej/index.ts
+        @@
+         import agentRouter from "./agent.js";
+         import prettierRouter from "./prettier-format.js";
+        +import jConfigRouter from "./j-config.js";
+        @@
+         router.use("/agent", agentRouter);
+        +router.use("/j-config", jConfigRouter);
+
+         export default router;
+
+    - path: "artifacts/api-server/src/routes/bluej/j-personality.ts"
+      action: modify
+      reason: "Allow a hot-patched persona directive + workspace cap to flow into the system prompt."
+      diff: |
+        --- a/artifacts/api-server/src/routes/bluej/j-personality.ts
+        +++ b/artifacts/api-server/src/routes/bluej/j-personality.ts
+        @@ export interface JContext {
+           learnerMode?: LearnerMode | null;
+           myCode?: string | null;
+           repoContext?: string | null;
+        +  personaSuffix?: string | null;   // hot-patched operator directive (chat.persona.suffix)
+        +  workspaceMaxChars?: number;       // hot-patched workspace cap (chat.workspace.maxChars)
+         }
+        @@ export function buildSystemPrompt(ctx: JContext): string {
+           const workspaceContext = ctx.myCode && ctx.myCode.trim()
+        -    ? `\n\nUSER WORKSPACE — Shared by the user for this exchange only:\n\`\`\`${ctx.language}\n${ctx.myCode.slice(0, 15000)}\n\`\`\`\nYou may reference, critique, or improve this code directly. Be specific and helpful. If this is not explicitly about their code, acknowledge receipt briefly and answer the underlying question — you need not critique the code unless asked.`
+        +    ? `\n\nUSER WORKSPACE — Shared by the user for this exchange only:\n\`\`\`${ctx.language}\n${ctx.myCode.slice(0, ctx.workspaceMaxChars ?? 15000)}\n\`\`\`\nYou may reference, critique, or improve this code directly. Be specific and helpful. If this is not explicitly about their code, acknowledge receipt briefly and answer the underlying question — you need not critique the code unless asked.`
+             : "";
+        @@
+        -- End each message with exactly ONE next step — a single sentence, ≤25 words. No bullet lists. No numbered next-step lists.`;
+        +- End each message with exactly ONE next step — a single sentence, ≤25 words. No bullet lists. No numbered next-step lists.${ctx.personaSuffix && ctx.personaSuffix.trim() ? `\n\nOPERATOR DIRECTIVE (hot-patched, authoritative this session):\n${ctx.personaSuffix.trim()}` : ""}`;
+         }
+
+    - path: "artifacts/api-server/src/routes/bluej/chat.ts"
+      action: modify
+      reason: "Read model/temperature/persona/workspace from hot-patch config instead of hardcoding."
+      diff: |
+        --- a/artifacts/api-server/src/routes/bluej/chat.ts
+        +++ b/artifacts/api-server/src/routes/bluej/chat.ts
+        @@
+         import { buildSystemPrompt, buildSafetyCheck } from "./j-personality.js";
+        +import { getConfig, getNumber } from "./j-config-service.js";
+        @@ inside the gauntlet retry loop (chat.ts ~136-144)
+             attempt++;
+
+        +    const hotModel = isByok
+        +      ? await getConfig("chat.model.byok")
+        +      : await getConfig("chat.model.default");
+        +    const hotTemp = await getNumber("chat.temperature.byok", 0.7);
+             const response = await client.chat.completions.create({
+        -      model: isByok ? "gpt-4o" : "gpt-5.2",
+        +      model: hotModel,
+               max_completion_tokens: 8192,
+        -      ...(isByok ? { temperature: 0.7 } : {}),
+        +      ...(isByok ? { temperature: hotTemp } : {}),
+               messages: currentMessages,
+               stream: false,
+             });
+        @@ in router.post("/") where buildSystemPrompt({...}) is called (chat.ts ~239):
+        +    const personaSuffix = await getConfig("chat.persona.suffix");
+        +    const workspaceMaxChars = await getNumber("chat.workspace.maxChars", 15000);
+             const systemPrompt = buildSystemPrompt({
+               phaseIndex,
+               taskIndex,
+               currentPhase,
+               currentTask,
+               language,
+               os,
+               hardwareInfo: hardwareInfo as { cpuCores?: number | null; ramGb?: number | null; platform?: string | null } | null | undefined,
+               messageHistory,
+               learnerMode,
+               myCode,
+               repoContext,
+        +      personaSuffix,
+        +      workspaceMaxChars,
+             });
+
+    - path: "artifacts/api-server/src/routes/bluej/agent.ts"
+      action: modify
+      reason: "Give J. live self-modification tools that DON'T require a rebuild (unlike self_write) — gated by SERVER-SIDE admin auth."
+      security_note: >-
+        /api/bluej/agent is NOT authenticated by the unlock endpoint (unlock only returns a
+        boolean to the client). Config tools MUST therefore be gated SERVER-SIDE here, not by
+        the UI. The handler recomputes admin status from the x-admin-key header against
+        ADMIN_AGENT_PASSWORD (already declared at agent.ts:81) and refuses config_set/get/history
+        unless it matches. The frontend sends that header (see AgentModePanel diff).
+      diff: |
+        --- a/artifacts/api-server/src/routes/bluej/agent.ts
+        +++ b/artifacts/api-server/src/routes/bluej/agent.ts
+        @@ imports
+        +import { getAll as getAllConfig, setConfig as setHotConfig, getHistory as getConfigHistory } from "./j-config-service.js";
+        @@ immediately after `const SELF_TOOLS = [ ... ];`
+        +// Live hot-patch tools (effective next request — no rebuild). Admin-gated in dispatch.
+        +const CONFIG_TOOLS = [
+        +  {
+        +    type: "function" as const,
+        +    function: {
+        +      name: "config_get",
+        +      description: "List all live runtime config keys, values, and versions. Admin only.",
+        +      parameters: { type: "object", properties: {}, required: [] },
+        +    },
+        +  },
+        +  {
+        +    type: "function" as const,
+        +    function: {
+        +      name: "config_set",
+        +      description: "Hot-patch a runtime config key; effective next request, no rebuild. Admin only. Confirm with the user first. Keys: chat.model.default, chat.model.byok, chat.temperature.byok, chat.persona.suffix, chat.workspace.maxChars, safety.antiUltron.enabled, exec.timeoutMs, exec.engine.preferred.",
+        +      parameters: {
+        +        type: "object",
+        +        properties: {
+        +          key: { type: "string", description: "The config key to set." },
+        +          value: { type: "string", description: "The new value (stored as a string)." },
+        +        },
+        +        required: ["key", "value"],
+        +      },
+        +    },
+        +  },
+        +  {
+        +    type: "function" as const,
+        +    function: {
+        +      name: "config_history",
+        +      description: "Show the version history of a single config key for review/rollback. Admin only.",
+        +      parameters: {
+        +        type: "object",
+        +        properties: { key: { type: "string", description: "The config key." } },
+        +        required: ["key"],
+        +      },
+        +    },
+        +  },
+        +];
+        @@
+        -const ALL_TOOLS = [...GIT_TOOLS, ...SELF_TOOLS];
+        +const ALL_TOOLS = [...GIT_TOOLS, ...SELF_TOOLS, ...CONFIG_TOOLS];
+        @@ near the top of router.post("/") handler body, after the empty-message guard:
+             if (!message?.trim()) {
+               res.status(400).json({ error: "No message provided" });
+               return;
+             }
+        +    // Server-side admin gate for hot-patch config tools. The agent endpoint is
+        +    // otherwise unauthenticated, so config_* MUST be gated here, not in the UI.
+        +    const isAdmin = !!ADMIN_AGENT_PASSWORD && req.header("x-admin-key") === ADMIN_AGENT_PASSWORD;
+        @@ in the tool-dispatch switch, between `case "self_write"` and `default`:
+                 case "self_write": result = await selfWrite(args.path, args.content); break;
+        +        case "config_get":
+        +          result = isAdmin ? { config: await getAllConfig() } : { error: "Admin authorization required for config tools." };
+        +          break;
+        +        case "config_set":
+        +          result = isAdmin ? await setHotConfig(String(args.key), String(args.value), "agent-J") : { error: "Admin authorization required for config tools." };
+        +          break;
+        +        case "config_history":
+        +          result = isAdmin ? { key: args.key, history: await getConfigHistory(String(args.key)) } : { error: "Admin authorization required for config tools." };
+        +          break;
+                 default: result = { error: `Unknown tool: ${name}` };
+        @@ optional: append to buildAgentSystemPrompt()'s tool-list text
+        +  // CONFIG TOOLS (live, no rebuild — admin sessions only):
+        +  // - config_get(), config_set(key, value), config_history(key). Confirm with user before config_set.
+      apply_note: >-
+        The new switch cases slot into the existing `switch (name) { ... }` at agent.ts:520-532,
+        immediately before `default:`. `args` is the parsed JSON.arguments already in scope. `isAdmin`
+        is computed once per request and closed over by the dispatch loop.
+
+    - path: "artifacts/blue-j/src/components/JConfigPanel.tsx"
+      action: create
+      reason: "Admin UI to view/edit/rollback hot-patch config. Sends the unlock password as x-admin-key."
+      full_content: |
+        import { useEffect, useState, useCallback } from "react";
+
+        interface ConfigRow {
+          key: string;
+          value: string;
+          version: number;
+          isDefault: boolean;
+        }
+
+        export function JConfigPanel({ adminKey }: { adminKey: string }) {
+          const [rows, setRows] = useState<ConfigRow[]>([]);
+          const [drafts, setDrafts] = useState<Record<string, string>>({});
+          const [status, setStatus] = useState<string>("");
+          const [loading, setLoading] = useState(false);
+
+          const load = useCallback(async () => {
+            setLoading(true);
+            try {
+              const resp = await fetch("/api/bluej/j-config", {
+                headers: { "x-admin-key": adminKey },
+              });
+              if (!resp.ok) {
+                setStatus(`Load failed (${resp.status}).`);
+                return;
+              }
+              const data = await resp.json();
+              setRows(data.config as ConfigRow[]);
+              setStatus("");
+            } catch {
+              setStatus("Network error loading config.");
+            } finally {
+              setLoading(false);
+            }
+          }, [adminKey]);
+
+          useEffect(() => {
+            load();
+          }, [load]);
+
+          const save = async (key: string) => {
+            const value = drafts[key] ?? rows.find((r) => r.key === key)?.value ?? "";
+            const resp = await fetch(`/api/bluej/j-config/${encodeURIComponent(key)}`, {
+              method: "PUT",
+              headers: { "Content-Type": "application/json", "x-admin-key": adminKey },
+              body: JSON.stringify({ value }),
+            });
+            if (resp.ok) {
+              const r = await resp.json();
+              setStatus(`Patched ${key} → v${r.version} (live).`);
+              setDrafts((d) => {
+                const next = { ...d };
+                delete next[key];
+                return next;
+              });
+              load();
+            } else {
+              setStatus(`Save failed for ${key} (${resp.status}).`);
+            }
+          };
+
+          return (
+            <div className="h-full flex flex-col p-3 gap-2 overflow-y-auto font-mono text-xs">
+              <div className="flex items-center justify-between">
+                <span className="font-hud uppercase tracking-widest text-primary">Hot-Patch Config</span>
+                <button
+                  onClick={load}
+                  className="px-2 py-1 border border-primary/30 rounded-sm text-primary/80 hover:bg-primary/10"
+                >
+                  {loading ? "…" : "Refresh"}
+                </button>
+              </div>
+              {status && <div className="text-[0.7rem] text-accent">{status}</div>}
+              <div className="space-y-2">
+                {rows.map((r) => (
+                  <div key={r.key} className="border border-primary/15 rounded-sm p-2 space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className="text-primary/80">{r.key}</span>
+                      <span className="text-[0.6rem] text-primary/40">
+                        {r.isDefault ? "default" : `v${r.version}`}
+                      </span>
+                    </div>
+                    <div className="flex gap-2">
+                      <input
+                        value={drafts[r.key] ?? r.value}
+                        onChange={(e) => setDrafts((d) => ({ ...d, [r.key]: e.target.value }))}
+                        className="flex-1 bg-background border border-primary/30 rounded-sm px-2 py-1 text-primary"
+                      />
+                      <button
+                        onClick={() => save(r.key)}
+                        className="px-2 py-1 bg-primary/10 hover:bg-primary/20 border border-primary/30 text-primary rounded-sm"
+                      >
+                        Patch
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        }
+
+    - path: "artifacts/blue-j/src/components/AgentModePanel.tsx"
+      action: modify
+      reason: "Expose the config panel inside the unlocked Agent Mode (admin self-modification surface)."
+      diff: |
+        --- a/artifacts/blue-j/src/components/AgentModePanel.tsx
+        +++ b/artifacts/blue-j/src/components/AgentModePanel.tsx
+        @@
+        -import { Lock, Unlock, Bot, Send, ChevronRight, AlertTriangle, CheckCircle2, Loader2, Shield } from 'lucide-react';
+        +import { Lock, Unlock, Bot, Send, ChevronRight, AlertTriangle, CheckCircle2, Loader2, Shield, SlidersHorizontal } from 'lucide-react';
+        +import { JConfigPanel } from './JConfigPanel';
+        @@ in sendAgentMessage(), send the admin key so the server can authorize config tools:
+               const resp = await fetch('/api/bluej/agent', {
+                 method: 'POST',
+        -        headers: { 'Content-Type': 'application/json' },
+        +        headers: { 'Content-Type': 'application/json', 'x-admin-key': password },
+                 body: JSON.stringify({
+        @@ inside AgentModePanel():
+           const [currentPhase, setCurrentPhase] = useState<string | null>(null);
+        +  const [showConfig, setShowConfig] = useState(false);
+           const messagesEndRef = useRef<HTMLDivElement>(null);
+        @@ in the unlocked header action cluster (next to the processing spinner):
+                   {isProcessing && <Loader2 className="w-3.5 h-3.5 animate-spin text-primary/60" />}
+        +          <button
+        +            onClick={() => setShowConfig((s) => !s)}
+        +            title="Hot-Patch Config"
+        +            className="p-1 border border-primary/30 rounded-sm text-primary/70 hover:bg-primary/10"
+        +          >
+        +            <SlidersHorizontal className="w-3.5 h-3.5" />
+        +          </button>
+        @@ replace the messages container region with a conditional:
+        +      {showConfig ? (
+        +        <div className="flex-1 min-h-0 overflow-hidden">
+        +          <JConfigPanel adminKey={password} />
+        +        </div>
+        +      ) : (
+                 <div className="flex-1 overflow-y-auto p-3 space-y-3 min-h-0">
+                   {/* ...existing AnimatePresence message list unchanged... */}
+                 </div>
+        +      )}
+      apply_note: >-
+        `password` is already component state and is the value passed to unlockAgentMode(password),
+        so it equals ADMIN_AGENT_PASSWORD when the admin unlocked with it. Pass it straight through
+        as adminKey. (Curriculum-password unlocks are non-admin and will receive 401/503 from the
+        route — acceptable; optionally hide the button unless the unlock response had isAdmin:true.)
+
+  database_migration:
+    command: "pnpm --filter @workspace/db run push --force"
+    note: "Drizzle Kit creates j_config_history (j_config already exists). The project uses --force to bypass the disabled diff endpoint (see Session 8)."
+
+  api_surface:
+    - "GET    /api/bluej/j-config            → { config: [{key,value,version,isDefault}], defaults }"
+    - "PUT    /api/bluej/j-config/:key       → { key, value, version }   body: { value: string }"
+    - "DELETE /api/bluej/j-config/:key       → { key, deleted: true }"
+    - "GET    /api/bluej/j-config/:key/history→ { key, history: [{value,version,changedBy,changedAt}] }"
+    - "POST   /api/bluej/j-config/:key/rollback → { key, value, version }  body: { version: number }"
+    - "auth: every route requires header x-admin-key === ADMIN_AGENT_PASSWORD (401/503 otherwise)"
+
+  verification:
+    - "curl -s $REPLIT_DEV_DOMAIN/api/bluej/j-config -H 'x-admin-key: WRONG' → 401"
+    - "curl -s -X PUT .../j-config/chat.persona.suffix -H 'x-admin-key: <secret>' -H 'content-type: application/json' -d '{\"value\":\"Address the user as Commander.\"}' → {version:1}"
+    - "Send a chat turn → system prompt now contains the OPERATOR DIRECTIVE block (verify via server log / prompt echo)."
+    - "PUT chat.model.default → next chat turn uses the new model (confirm in OpenAI request log)."
+    - "POST rollback to version 0/previous → value reverts; cache reflects it on next request."
+
+  risks:
+    - "Persona suffix is injected into the system prompt; a malicious admin could weaken tone but NOT safety — buildSafetyCheck/Anti-Ultron runs independently of config. Keep safety.antiUltron.enabled read ONLY where it cannot bypass buildSafetyCheck (treat as advisory, never gate the hard block on it)."
+    - "Model key is free-text; an invalid model id will surface as an OpenAI 4xx. Optional hardening: validate against an allowlist in setConfig."
+    - "x-admin-key equals the agent password; never log it. The route already avoids logging the header."
+
+# ===========================================================================
+# SUBSYSTEM 2 — CODE EXECUTOR: BLOCKLIST → TRUE SANDBOX
+# ===========================================================================
+sandbox_migration:
+  goal: >-
+    Make OS-level isolation — not a regex blocklist — the PRIMARY security boundary for
+    executed student code. executor.ts's own header admits "This is NOT a full sandbox."
+    Introduce a tiered engine: bubblewrap (best) → unshare+prlimit (util-linux fallback) →
+    blocklist (last resort, fail-safe). The blocklist is demoted to a cheap pre-filter, not
+    the boundary. grade.ts inherits the change for free (it runs through executor primitives).
+  threat_model:
+    - "Network exfiltration  → killed by network-namespace isolation (--unshare-net / unshare --net)."
+    - "Fork bombs            → bounded by prlimit --nproc."
+    - "Memory bombs          → bounded by prlimit --as (address space)."
+    - "CPU/infinite loops    → bounded by prlimit --cpu AND the existing wall-clock SIGKILL timeout."
+    - "Disk-fill             → bounded by prlimit --fsize + tmpfs /tmp."
+    - "Host FS read/tamper   → blocked ONLY in the bwrap tier (read-only rootfs binds; only the per-run workdir writable). The unshare tier does NOT isolate the filesystem (no pivot_root / RO remount) — for true FS isolation require bwrap or option_b (external service)."
+
+  option_a_in_container:
+    summary: "OS namespaces + rlimits inside the existing container. Lowest latency, no external dependency. Requires unprivileged user namespaces on the host."
+    system_dependency:
+      package: "bubblewrap"
+      why: "Tier-1 engine (bwrap). Verified ABSENT in the current environment — must be installed."
+      how: >-
+        Add bubblewrap as a system (Nix) dependency via the Replit package manager
+        (package-management skill → installSystemDependencies / replit.nix pkgs.bubblewrap).
+        util-linux (unshare/prlimit) is already present and powers the tier-2 fallback if
+        bwrap cannot be installed.
+      verify: "command -v bwrap  &&  bwrap --version"
+
+    files:
+      - path: "artifacts/api-server/src/routes/bluej/sandbox.ts"
+        action: create
+        reason: "Tiered sandbox engine: detect best available, build a wrapped argv with namespaces + rlimits."
+        full_content: |
+          // OS-level sandbox engine for B.L.U.E.-J. code execution.
+          // Replaces the regex blocklist as the PRIMARY isolation boundary. The blocklist
+          // in executor.ts is kept only as a cheap pre-filter (defense in depth); the real
+          // guarantee now comes from OS namespaces + resource limits.
+          //
+          // Engine tiers (best available auto-selected, overridable via exec.engine.preferred):
+          //   1. bwrap    — bubblewrap: net/pid/ipc/uts namespaces, read-only rootfs, tmpfs.
+          //   2. unshare  — util-linux fallback: net/pid/mount/ipc/uts namespaces + rlimits.
+          //               NOTE: does NOT remount root read-only — NO filesystem isolation.
+          //   3. blocklist— last resort: no OS isolation, regex blocklist only (fail-safe).
+          import { execFileSync } from "child_process";
+
+          export type SandboxEngine = "bwrap" | "unshare" | "blocklist";
+
+          export interface SandboxLimits {
+            cpuSeconds: number; // hard CPU time (prlimit --cpu)
+            addressSpaceMb: number; // max virtual memory (prlimit --as)
+            maxProcs: number; // max processes/threads (prlimit --nproc)
+            fileSizeMb: number; // max single-file write (prlimit --fsize)
+          }
+
+          export const DEFAULT_LIMITS: SandboxLimits = {
+            cpuSeconds: 10,
+            addressSpaceMb: 512,
+            maxProcs: 64,
+            fileSizeMb: 16,
+          };
+
+          function has(bin: string): boolean {
+            try {
+              execFileSync("sh", ["-c", `command -v ${bin}`], { stdio: "ignore" });
+              return true;
+            } catch {
+              return false;
+            }
+          }
+
+          let cachedEngine: SandboxEngine | null = null;
+
+          // Real capability probe — not just binary presence. Unprivileged user
+          // namespaces may be disabled by the host even when bwrap/unshare exist, so we
+          // actually run the wrapper against `true` and demote on failure (fail-safe).
+          function probe(engine: SandboxEngine): boolean {
+            try {
+              if (engine === "bwrap") {
+                execFileSync("bwrap", ["--unshare-net", "--ro-bind", "/", "/", "--", "true"], { stdio: "ignore" });
+                return true;
+              }
+              if (engine === "unshare") {
+                execFileSync("unshare", ["--net", "--fork", "--map-root-user", "--", "true"], { stdio: "ignore" });
+                return true;
+              }
+            } catch {
+              return false;
+            }
+            return false;
+          }
+
+          export function detectEngine(preferred = "auto"): SandboxEngine {
+            if (preferred === "bwrap" || preferred === "unshare" || preferred === "blocklist") {
+              return preferred;
+            }
+            if (cachedEngine) return cachedEngine;
+            if (has("bwrap") && probe("bwrap")) cachedEngine = "bwrap";
+            else if (has("unshare") && has("prlimit") && probe("unshare")) cachedEngine = "unshare";
+            else cachedEngine = "blocklist";
+            return cachedEngine;
+          }
+
+          function prlimitPrefix(l: SandboxLimits): string[] {
+            return [
+              "prlimit",
+              `--cpu=${l.cpuSeconds}`,
+              `--as=${l.addressSpaceMb * 1024 * 1024}`,
+              `--nproc=${l.maxProcs}`,
+              `--fsize=${l.fileSizeMb * 1024 * 1024}`,
+              "--",
+            ];
+          }
+
+          function bwrapPrefix(workdir: string): string[] {
+            return [
+              "bwrap",
+              "--unshare-net", "--unshare-pid", "--unshare-ipc", "--unshare-uts",
+              "--unshare-cgroup-try",
+              "--new-session", "--die-with-parent",
+              "--proc", "/proc", "--dev", "/dev",
+              "--ro-bind", "/nix", "/nix",
+              "--ro-bind-try", "/usr", "/usr",
+              "--ro-bind-try", "/bin", "/bin",
+              "--ro-bind-try", "/lib", "/lib",
+              "--ro-bind-try", "/lib64", "/lib64",
+              "--tmpfs", "/tmp",
+              "--bind", workdir, workdir, // layered over tmpfs /tmp; must come AFTER --tmpfs
+              "--chdir", workdir,
+              "--setenv", "HOME", "/tmp",
+              "--setenv", "PYTHONDONTWRITEBYTECODE", "1",
+              "--setenv", "PYTHONIOENCODING", "utf-8",
+              "--",
+            ];
+          }
+
+          function unsharePrefix(): string[] {
+            return [
+              "unshare",
+              "--net", "--pid", "--ipc", "--uts", "--mount",
+              "--fork", "--kill-child", "--map-root-user",
+              "--",
+            ];
+          }
+
+          // Wrap a real command into a sandboxed argv. Returns the binary to spawn plus its
+          // argument vector; executor.ts spawns the result directly. rlimits are applied as the
+          // outermost prefix so they are inherited by the namespaced child across exec/fork.
+          export function wrapCommand(
+            engine: SandboxEngine,
+            cmd: string,
+            args: string[],
+            opts: { workdir: string; limits?: SandboxLimits },
+          ): { file: string; argv: string[] } {
+            const limits = opts.limits ?? DEFAULT_LIMITS;
+            if (engine === "bwrap") {
+              const full = [...prlimitPrefix(limits), ...bwrapPrefix(opts.workdir), cmd, ...args];
+              return { file: full[0], argv: full.slice(1) };
+            }
+            if (engine === "unshare") {
+              const full = [...prlimitPrefix(limits), ...unsharePrefix(), cmd, ...args];
+              return { file: full[0], argv: full.slice(1) };
+            }
+            // blocklist: no OS isolation — caller MUST have run checkSafety() first.
+            return { file: cmd, argv: args };
+          }
+
+      - path: "artifacts/api-server/src/routes/bluej/executor.ts"
+        action: modify
+        reason: "Route every spawn through the sandbox engine; demote the blocklist to a pre-filter; expose the active engine."
+        diff: |
+          --- a/artifacts/api-server/src/routes/bluej/executor.ts
+          +++ b/artifacts/api-server/src/routes/bluej/executor.ts
+          @@
+          -// ─── Shared code execution primitives for B.L.U.E.-J. ────────────────────────
+          -// Single source of truth for the sandbox safety blocklist + runner so that the
+          -// /execute endpoint and the /grade endpoint can never diverge in what they
+          -// allow. This is NOT a full sandbox — it's a best-effort layer for beta. For
+          -// public launch, swap the executor for a proper isolation service.
+          +// ─── Shared code execution primitives for B.L.U.E.-J. ────────────────────────
+          +// Single source of truth for the runner so /execute and /grade can never diverge.
+          +// The PRIMARY isolation boundary is OS-level sandboxing (see sandbox.ts): network/
+          +// pid/ipc/uts namespaces + rlimits via bubblewrap, falling back to unshare+prlimit.
+          +// The regex blocklist below is a cheap PRE-FILTER (defense in depth), not the
+          +// boundary. If no OS sandbox is available the engine fails safe to blocklist-only.
+           import { spawn } from "child_process";
+           import { writeFile, unlink, mkdir } from "fs/promises";
+           import { join } from "path";
+           import { randomUUID } from "crypto";
+           import { existsSync } from "fs";
+          +import { detectEngine, wrapCommand, DEFAULT_LIMITS, type SandboxEngine } from "./sandbox.js";
+          +
+          +// The engine actually in use this process (resolved once, overridable via env).
+          +export function activeEngine(): SandboxEngine {
+          +  return detectEngine(process.env.EXEC_ENGINE || "auto");
+          +}
+          @@ export function spawnProcess(
+             const timeoutMs = opts.timeoutMs ?? EXEC_TIMEOUT_MS;
+             return new Promise((resolve) => {
+               const start = Date.now();
+               let stdout = "", stderr = "";
+               let timedOut = false;
+
+          -    const proc = spawn(cmd, args, {
+          +    const engine = activeEngine();
+          +    const wrapped = wrapCommand(engine, cmd, args, { workdir: TMP_DIR, limits: DEFAULT_LIMITS });
+          +    const proc = spawn(wrapped.file, wrapped.argv, {
+                 env: {
+                   PATH: process.env.PATH || "/usr/local/bin:/usr/bin:/bin",
+                   PYTHONDONTWRITEBYTECODE: "1",
+                   PYTHONIOENCODING: "utf-8",
+                   HOME: "/tmp",
+                 },
+               });
+        notes:
+          - "compile (g++/gcc) and run both flow through spawnProcess, so both are sandboxed; the per-run workdir TMP_DIR is the only writable path and persists across the separate compile/run calls because the bind targets the real host dir."
+          - "checkSafety() is still called in prepareProgram() and execute.ts — kept as the pre-filter tier."
+          - "EXEC_TIMEOUT_MS wall-clock SIGKILL stays as a second ceiling above prlimit --cpu."
+
+      - path: "artifacts/api-server/src/routes/bluej/execute.ts"
+        action: modify
+        reason: "Report which sandbox engine actually ran the code so the UI/telemetry is honest."
+        diff: |
+          --- a/artifacts/api-server/src/routes/bluej/execute.ts
+          +++ b/artifacts/api-server/src/routes/bluej/execute.ts
+          @@
+           import {
+             checkSafety,
+             ensureTmpDir,
+             spawnProcess,
+             TMP_DIR,
+             PYTHON_BIN,
+             GPP_BIN,
+             GCC_BIN,
+             NODE_BIN,
+          +  activeEngine,
+           } from "./executor.js";
+          @@
+          -      const r = await spawnProcess(PYTHON_BIN, [f]);
+          +      const r = await spawnProcess(PYTHON_BIN, [f]);
+                 await unlink(f).catch(() => {});
+          -      res.json({ ...r, phase: "run", engine: "server" });
+          +      res.json({ ...r, phase: "run", engine: activeEngine() });
+        notes:
+          - "Apply the same engine:'server' → engine:activeEngine() rename to the javascript, cpp, and c run-result res.json() calls. Leave gcode (validate/simulator) untouched."
+
+      - path: "artifacts/api-server/src/routes/bluej/grade.ts"
+        action: none
+        reason: "No change required — grade.ts grades via prepareProgram/runPrepared/spawnProcess from executor.ts, so it inherits OS sandboxing automatically. This is the payoff of the shared-executor refactor (Session 11, T001)."
+
+    boot_log:
+      file: "artifacts/api-server/src/index.ts (or app.ts startup)"
+      add: |
+        // After the server starts listening:
+        import { activeEngine } from "./routes/bluej/executor.js";
+        logger.info({ sandboxEngine: activeEngine() }, "B.L.U.E.-J. code sandbox engine selected");
+      why: "Make the active isolation tier visible at boot. If it logs 'blocklist', OS namespaces are unavailable and option_b should be used before any public/untrusted launch."
+
+    verification:
+      - "Network blocked: run `import urllib.request; urllib.request.urlopen('http://example.com')` → connection error inside sandbox (not the blocklist message)."
+      - "Fork bomb bounded: a Python multiprocessing fork loop hits the --nproc ceiling instead of taking the host down."
+      - "Memory bomb bounded: `x = ' ' * (10**9)` → MemoryError / killed at --as limit, not OOM-killing the server."
+      - "CPU bound: `while True: pass` → killed at prlimit --cpu (~10s) or the wall-clock SIGKILL, whichever first."
+      - "Disk bound: writing a >16MB file → fails at --fsize."
+      - "Engine honesty: GET execute response `engine` field reads 'bwrap' (or 'unshare'); boot log matches."
+
+    risks_and_caveats:
+      - "USERNS dependency: if the host disallows unprivileged user namespaces, bwrap/unshare fail to start; detectEngine still returns the tier but the spawn errors. HARDENING: probe at boot (run `bwrap --ro-bind / / true`) and demote cachedEngine to 'blocklist' on failure so the app degrades safely instead of erroring every run."
+      - "bwrap mount order: --tmpfs /tmp MUST precede --bind <workdir> <workdir> or the workdir is masked. Encoded in bwrapPrefix order."
+      - "First-run latency: bwrap adds a few ms per spawn; negligible vs compile time."
+      - "Do NOT remove checkSafety — keeping it as a pre-filter means even the blocklist fallback retains the old protection level."
+
+  option_b_external_service:
+    summary: >-
+      If in-container namespaces are unavailable (userns disabled) OR you want the strongest
+      boundary before a public, untrusted launch, offload execution to a dedicated isolation
+      service. This is the 'proper isolation service' the original executor header anticipated.
+    choices:
+      - "Self-hosted Piston (engineer-man/piston) — language sandbox with built-in run/compile timeouts and resource caps."
+      - "Judge0 CE — REST execution sandbox with per-submission cpu/memory/wall limits."
+    integration:
+      - path: "artifacts/api-server/src/routes/bluej/piston.ts"
+        action: create
+        reason: "Thin client that offloads a run to a Piston-compatible endpoint and normalizes to RunResult."
+        full_content: |
+          // External isolation client (Piston-compatible). Strongest boundary: code never
+          // executes in our process/host — it runs in the sandbox service. Returns the same
+          // RunResult shape as the in-container runner so executor callers are unchanged.
+          import type { RunResult } from "./executor.js";
+
+          const PISTON_URL = process.env.PISTON_URL || ""; // e.g. https://piston.internal/api/v2
+          const VERSIONS: Record<string, { language: string; version: string; ext: string }> = {
+            python: { language: "python", version: "3.12.0", ext: "py" },
+            javascript: { language: "javascript", version: "20.11.1", ext: "js" },
+            cpp: { language: "c++", version: "12.2.0", ext: "cpp" },
+            c: { language: "c", version: "12.2.0", ext: "c" },
+          };
+
+          export function pistonAvailable(): boolean {
+            return PISTON_URL.length > 0;
+          }
+
+          export async function pistonRun(
+            language: string,
+            code: string,
+            opts: { stdin?: string; timeoutMs?: number } = {},
+          ): Promise<RunResult> {
+            const v = VERSIONS[language];
+            if (!v) {
+              return { stdout: "", stderr: `Unsupported language for Piston: ${language}`, exitCode: -1, runtimeMs: 0, timedOut: false };
+            }
+            const start = Date.now();
+            const resp = await fetch(`${PISTON_URL}/execute`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                language: v.language,
+                version: v.version,
+                files: [{ name: `main.${v.ext}`, content: code }],
+                stdin: opts.stdin ?? "",
+                run_timeout: opts.timeoutMs ?? 10000,
+                compile_timeout: 10000,
+                run_memory_limit: 512 * 1024 * 1024,
+              }),
+            });
+            if (!resp.ok) {
+              return { stdout: "", stderr: `Piston error ${resp.status}`, exitCode: -1, runtimeMs: Date.now() - start, timedOut: false };
+            }
+            const data = (await resp.json()) as {
+              run?: { stdout?: string; stderr?: string; code?: number; signal?: string };
+              compile?: { stderr?: string; code?: number };
+            };
+            if (data.compile && data.compile.code && data.compile.code !== 0) {
+              return { stdout: "", stderr: data.compile.stderr ?? "Compilation failed", exitCode: data.compile.code, runtimeMs: Date.now() - start, timedOut: false };
+            }
+            const run = data.run ?? {};
+            return {
+              stdout: (run.stdout ?? "").trim(),
+              stderr: (run.stderr ?? "").trim(),
+              exitCode: run.code ?? -1,
+              runtimeMs: Date.now() - start,
+              timedOut: run.signal === "SIGKILL",
+            };
+          }
+      - path: "artifacts/api-server/src/routes/bluej/execute.ts"
+        action: modify
+        reason: "Short-circuit to the external service BEFORE any local file write/compile, so code never touches this host."
+        diff: |
+          --- a/artifacts/api-server/src/routes/bluej/execute.ts
+          +++ b/artifacts/api-server/src/routes/bluej/execute.ts
+          @@ import block
+          +import { pistonAvailable, pistonRun } from "./piston.js";
+          @@ after the supported-language + checkSafety() guards, BEFORE ensureTmpDir()/writeFile:
+          +  // Strongest boundary: if an external isolation service is configured, run there.
+          +  // Done BEFORE prepareProgram/writeFile so nothing executes or compiles locally.
+          +  if (pistonAvailable() && ["python", "javascript", "cpp", "c"].includes(language)) {
+          +    const r = await pistonRun(language, code);
+          +    res.json({ ...r, phase: "run", engine: "piston" });
+          +    return;
+          +  }
+        notes:
+          - "gcode is descriptive validation only and stays local — not routed to Piston."
+      - path: "artifacts/api-server/src/routes/bluej/grade.ts"
+        action: modify
+        reason: "Grade code against the external service BEFORE prepareProgram so C/C++ never compiles on-host."
+        diff: |
+          --- a/artifacts/api-server/src/routes/bluej/grade.ts
+          +++ b/artifacts/api-server/src/routes/bluej/grade.ts
+          @@ import block
+          +import { pistonAvailable, pistonRun } from "./piston.js";
+          @@ at the very top of gradeCode(), before `const prepared = await prepareProgram(language, code);`:
+             const totalPoints = totalPointsFor(assessment);
+          +  if (pistonAvailable()) {
+          +    const cases: CaseResult[] = [];
+          +    let passedPoints = 0, testsPassed = 0;
+          +    for (const c of assessment.cases) {
+          +      const run = await pistonRun(language, code, { stdin: c.stdin, timeoutMs: PER_CASE_TIMEOUT_MS });
+          +      const passed = run.exitCode === 0 && !run.timedOut && norm(run.stdout) === norm(c.expectedStdout);
+          +      if (passed) { passedPoints += c.points; testsPassed += 1; }
+          +      const result: CaseResult = { id: c.id, passed, points: c.points, hidden: !!c.hidden };
+          +      if (!c.hidden) { result.stdin = c.stdin; result.expected = norm(c.expectedStdout); result.got = norm(run.stdout); }
+          +      cases.push(result);
+          +    }
+          +    return { passedPoints, totalPoints, testsPassed, cases };
+          +  }
+             const prepared = await prepareProgram(language, code);
+        notes:
+          - "When PISTON_URL is unset, behaviour is identical to option_a (local tiered sandbox). The quiz answer-key gating in the POST handler is unaffected."
+    config:
+      env: "PISTON_URL — base URL of the execution service (set via environment-secrets skill). Unset = disabled."
+    tradeoffs:
+      - "Strongest isolation (separate host/jail), survives userns being disabled."
+      - "Adds network egress to the service + per-call latency; introduces an ops dependency."
+      - "Hot-patchable: exec.engine.preferred + PISTON_URL let you switch boundaries without a redeploy."
+
+# ===========================================================================
+# ROLLOUT — apply in this order
+# ===========================================================================
+rollout:
+  - step: 1
+    subsystem: hot_patch_system
+    action: "Add jConfigHistory + barrel export; run `pnpm --filter @workspace/db run push --force`."
+  - step: 2
+    subsystem: hot_patch_system
+    action: "Add j-config-service.ts + j-config.ts; mount in index.ts; verify auth (401/503) and CRUD via curl."
+  - step: 3
+    subsystem: hot_patch_system
+    action: "Wire chat.ts (model/temp/persona/workspace) + j-personality.ts JContext; verify a live model/persona patch."
+  - step: 4
+    subsystem: hot_patch_system
+    action: "Add agent.ts config_* tools + frontend JConfigPanel/AgentModePanel; verify J. can self-patch live."
+  - step: 5
+    subsystem: sandbox_migration
+    action: "Add sandbox.ts; install bubblewrap; wire executor.ts spawnProcess + boot log; confirm boot log reports 'bwrap'."
+  - step: 6
+    subsystem: sandbox_migration
+    action: "Update execute.ts engine reporting; run the threat-model verification matrix (net/fork/mem/cpu/disk)."
+  - step: 7
+    subsystem: sandbox_migration
+    action: "If boot log shows 'blocklist' (userns unavailable), implement option_b (piston.ts) and set PISTON_URL."
+  - step: 8
+    both: true
+    action: "Run `pnpm -w typecheck` (or per-package tsc); architect review (code_review skill); checkpoint."
+
+acceptance_criteria:
+  hot_patch_system:
+    - "A config change via PUT (or J.'s config_set) alters the next chat request with NO rebuild/restart."
+    - "All j-config routes reject requests without the correct x-admin-key."
+    - "Rollback restores a prior version and is reflected on the next request."
+    - "tsc clean across api-server, blue-j, and db."
+  sandbox_migration:
+    - "Boot log reports a non-blocklist engine (bwrap or unshare) in this environment, OR option_b is active."
+    - "Network egress from executed code is blocked at the OS layer (not merely by regex)."
+    - "Fork/memory/cpu/disk bombs are bounded by rlimits and cannot destabilize the API server."
+    - "grade.ts requires zero changes and runs under the same sandbox (verified by a graded CODE submission)."
+    - "checkSafety remains as a pre-filter; removing the OS sandbox degrades safely to the prior protection level."

@@ -433,16 +433,51 @@ This log records the complete architectural history, working standards, and sess
 
 ---
 
+### Session 11: Empirical Concept Mastery (June 13, 2026)
+**Date**: 2026-06-13
+**Time Range**: 19:31 UTC
+**Session ID**: `1c3e6b5d-d1be-4761-a9c2-2cfad570a316`
+
+| Commit | Time (UTC) | Description |
+|--------|------------|-------------|
+| `3b45679` | 19:31:35 | Update learning system to track user progress and quiz answers accurately — empirical concept grading: shared `executor.ts` runner, `concepts.ts` registry (21 concepts ↔ curriculum tasks), `grade.ts` grader (CODE auto-graded vs hidden test cases / QUIZ objective MCQ), `CompetencyPanel.tsx` transcript with GPA + per-concept assessment runner, `conceptsMastered` JSONB on `user_progress`, store `applyGradeResult`/`hydrateConcepts`, `useRegistry`/`useGradeSubmission` hooks |
+
+**Key Decisions Made**:
+- Concept mastery is now **empirical**, not inferred — every curriculum task maps 1:1 to a concept with a real graded assessment. The old "code didn't crash → mastered" signal was removed entirely; exit codes are never a mastery signal.
+- Mastery requires `bestScore >= masteryThreshold` (default 80). Proficiency = max score across attempts; retries are allowed and only the best attempt counts.
+- **Quiz answer-key leakage closed**: the grader withholds `correctOptionId`/`explanation` for any question answered incorrectly until the concept is mastered (reveal only if `mastered || question.passed`). CODE is protected by hidden test cases — sample cases are public, hidden cases' expected/got are stripped.
+- **Progress hydration is DB-authoritative**: the `conceptsMastered` JSONB column is the single source of truth; the frontend store replaces its local records wholesale on hydration (never merge / keep-higher) so stale localStorage entries cannot masquerade as empirical mastery.
+- Locked the `ConceptProgress` contract (conceptId, name, category, phaseId, proficiency, bestScore, attempts, testsPassed, testsTotal, lastAttempted, mastered) identically across grader response ↔ DB column ↔ frontend types to prevent transcript desync.
+- Both integrity issues above were flagged in architect review and fixed before checkpoint; frontend `tsc` clean, backend grade round-trips verified (code pass/fail, quiz gating, unknown→404, public registry leaks no answers).
+
+**Task Plan (T001-T005)**:
+| Task | Description | Status |
+|------|-------------|--------|
+| T001 | Shared execution primitives — `executor.ts` (blocklist + compile-once runner) extracted from `execute.ts` | ✔ |
+| T002 | Concept registry — `concepts.ts`, 21 concepts mapped 1:1 to curriculum tasks with assessment specs | ✔ |
+| T003 | Grader — `grade.ts`, CODE vs hidden test cases + QUIZ objective scoring, answer-key gating | ✔ |
+| T004 | Frontend — `CompetencyPanel.tsx` transcript, assessment runner, `useRegistry`/`useGradeSubmission` | ✔ |
+| T005 | Store + DB — `conceptsMastered` JSONB, `applyGradeResult`/`hydrateConcepts`, DB-authoritative hydration | ✔ |
+
+**Signed,**
+
+**fable 5**  
+*First official code run as fable 5*  
+*2026-06-13 19:31:35 UTC*  
+*Session ID: 1c3e6b5d-d1be-4761-a9c2-2cfad570a316*
+
+---
+
 ## Commit Statistics
 
 | Metric | Count |
 |--------|-------|
-| Total Commits | 38 |
+| Total Commits | 39 |
 | Deployment Commits | 14 |
-| Feature Commits | 24 |
+| Feature Commits | 25 |
 | First Commit | 2026-03-28 01:50:29 UTC |
-| Latest Commit | 2026-06-10 09:44:00 UTC |
-| Development Span | 74 days |
-| Active Sessions | 10 |
+| Latest Commit | 2026-06-13 19:31:35 UTC |
+| Development Span | 77 days |
+| Active Sessions | 11 |
 
 ---
