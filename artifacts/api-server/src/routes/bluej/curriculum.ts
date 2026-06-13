@@ -536,7 +536,7 @@ const jMemory = new LinkedList();
 jMemory.append("First contact");
 jMemory.append("Variables learned");
 jMemory.append("Loops understood");
-console.log("J.'s memory chain: " + jMemory.display());
+console.log("J.'s memory chain: " + jMemory.display());`,
         },
         successMessage: "Linked list established. You've implemented dynamic memory allocation — the same principle behind how databases manage records, how operating systems track processes, and how I store my reasoning chains.",
         realWorldContext: "Linked lists are used in memory allocators, hash table collision resolution, and adjacency lists for graph algorithms. In C, malloc/free management is foundational. In Python, garbage collection handles this automatically, but the principle remains.",
@@ -689,7 +689,7 @@ const jKnowledge = new BST();
 jKnowledge.insert("variables", "Named memory locations");
 jKnowledge.insert("loops", "Repetition structures");
 jKnowledge.insert("functions", "Reusable code blocks");
-console.log("Found: loops = " + jKnowledge.find("loops"));
+console.log("Found: loops = " + jKnowledge.find("loops"));`,
         },
         successMessage: "Binary search tree operational. O(log n) search achieved. This is how database indexes work, how file systems organize directories, and how compilers build symbol tables.",
         realWorldContext: "Binary search trees evolve into B-trees and B+ trees in databases (MySQL, PostgreSQL), and红黑树 (red-black trees) in Linux kernel scheduling and C++ std::map. Understanding BSTs is understanding the foundations of efficient search.",
@@ -788,8 +788,8 @@ int main() {
 }
 const jScores = [0.87, 0.95, 0.62, 0.78, 0.91, 0.55];
 const sorted = quicksort(jScores);
-console.log(`Sorted confidence scores: ${sorted.join(" ")}`);
-console.log("Best score: " + sorted[sorted.length - 1]);
+console.log("Sorted confidence scores: " + sorted.join(" "));
+console.log("Best score: " + sorted[sorted.length - 1]);`
         },
         successMessage: "QuickSort implemented. O(n log n) average complexity. You've just written the algorithm that powers most standard library sort functions. Korotkevich would be proud.",
         realWorldContext: "std::sort in C++ uses Introsort (QuickSort + HeapSort). Python's sorted() uses Timsort. Database query optimizers use sorting for ORDER BY, merge joins, and deduplication. Sorting is the universal primitive.",
@@ -898,7 +898,7 @@ int main() {
 // O(1) — constant time
 const start1 = performance.now();
 const result = jScores[jScores.length - 1];
-console.log(`O(1) access: ${(performance.now() - start1).toFixed(4)} ms`);
+console.log("O(1) access: " + (performance.now() - start1).toFixed(4) + " ms");
 
 // O(n) — linear search
 const start2 = performance.now();
@@ -906,12 +906,12 @@ let found = false;
 for (const score of jScores) {
     if (score === 0.91) { found = true; break; }
 }
-console.log(`O(n) search: ${(performance.now() - start2).toFixed(4)} ms`);
+console.log("O(n) search: " + (performance.now() - start2).toFixed(4) + " ms");
 
 // O(n log n) — sorting
 const start3 = performance.now();
 const sorted = [...jScores].sort((a, b) => a - b);
-console.log(`O(n log n) sort: ${(performance.now() - start3).toFixed(4)} ms`);
+console.log("O(n log n) sort: " + (performance.now() - start3).toFixed(4) + " ms");
 
 console.log("\\nComplexity hierarchy: O(1) < O(log n) < O(n) < O(n log n) < O(n²) < O(2^n)");`,
         },
@@ -1017,34 +1017,9 @@ int main() {
     return 0;
 }`,
           javascript: `// SQL schema for J.'s knowledge base
-const sqlCreate = `
-CREATE TABLE concepts (
-    id INTEGER PRIMARY KEY,
-    name TEXT NOT NULL,
-    category TEXT,
-    mastery_level INTEGER DEFAULT 0
-);
-
-CREATE TABLE conversations (
-    id INTEGER PRIMARY KEY,
-    concept_id INTEGER REFERENCES concepts(id),
-    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-    content TEXT
-);
-`;
-
-const sqlInsert = `
-INSERT INTO concepts (name, category, mastery_level) VALUES
-    ('Variables', 'Fundamentals', 90),
-    ('Linked Lists', 'Data Structures', 75),
-    ('QuickSort', 'Algorithms', 80);
-`;
-
-const sqlQuery = `
-SELECT name, mastery_level FROM concepts
-WHERE category = 'Data Structures'
-ORDER BY mastery_level DESC;
-`;
+const sqlCreate = "CREATE TABLE concepts (id INTEGER PRIMARY KEY, name TEXT NOT NULL, category TEXT, mastery_level INTEGER DEFAULT 0);";
+const sqlInsert = "INSERT INTO concepts VALUES (1, 'Variables', 'Fundamentals', 90), (2, 'Linked Lists', 'Data Structures', 75), (3, 'QuickSort', 'Algorithms', 80);";
+const sqlQuery = "SELECT name, mastery_level FROM concepts WHERE category = 'Data Structures' ORDER BY mastery_level DESC;";
 
 console.log("SQL Schema:");
 console.log(sqlCreate);
@@ -1138,25 +1113,7 @@ int main() {
     printf("WHERE c.mastery_level > 70;\\n");
     return 0;
 }`,
-          javascript: `const normalizedSchema = `
-CREATE TABLE categories (
-    id INTEGER PRIMARY KEY,
-    name TEXT NOT NULL,
-    description TEXT
-);
-
-CREATE TABLE concepts (
-    id INTEGER PRIMARY KEY,
-    name TEXT NOT NULL,
-    category_id INTEGER REFERENCES categories(id),
-    mastery_level INTEGER DEFAULT 0
-);
-
-SELECT c.name, cat.name AS category, c.mastery_level
-FROM concepts c
-JOIN categories cat ON c.category_id = cat.id
-WHERE c.mastery_level > 70;
-`;
+          javascript: `const normalizedSchema = "CREATE TABLE categories (id INTEGER PRIMARY KEY, name TEXT NOT NULL, description TEXT); CREATE TABLE concepts (id INTEGER PRIMARY KEY, name TEXT NOT NULL, category_id INTEGER REFERENCES categories(id), mastery_level INTEGER DEFAULT 0); SELECT c.name, cat.name, c.mastery_level FROM concepts c JOIN categories cat ON c.category_id = cat.id WHERE c.mastery_level > 70;";
 
 console.log("Normalized Schema:");
 console.log(normalizedSchema);
@@ -1295,13 +1252,13 @@ int main() {
         if (next) {
             const old = this.state;
             this.state = next;
-            console.log(`Transition: ${old} --${event}--> ${this.state}`);
+            console.log("Transition: " + old + " --" + event + "--> " + this.state);
         } else {
-            console.log(`Invalid transition: ${this.state} --${event}--> ?`);
+            console.log("Invalid transition: " + this.state + " --" + event + "--> ?");
         }
     }
     status() {
-        return `Current state: ${this.state}`;
+        return "Current state: " + this.state;
     }
 }
 
@@ -1478,7 +1435,7 @@ class TuringMachine {
     step() {
         if (this.state === "HALT") return false;
         const symbol = this.tape[this.head] || TAPE_BLANK;
-        const key = `${this.state},${symbol}`;
+        const key = this.state + "," + symbol;
         const trans = this.transitions[key];
         if (!trans) return false;
         this.tape[this.head] = trans.writeSymbol;
@@ -1503,8 +1460,8 @@ const tm = new TuringMachine(
     },
     "S0"
 );
-console.log(`TM result: ${tm.run()}`);
-console.log(`Steps: ${tm.steps}`);`,
+console.log("TM result: " + tm.run());
+console.log("Steps: " + tm.steps);`,
         },
         successMessage: "Turing machine operational. You've simulated the universal model of computation. Every program, every algorithm, every AI system is a Turing machine at its core. The Church-Turing thesis is no longer abstract.",
         realWorldContext: "The Turing machine is the theoretical foundation of computer science. All programming languages are Turing-complete. The halting problem you will study next proves there are limits to what even a Turing machine can decide.",

@@ -14,6 +14,7 @@ export function AchievementsPanel() {
   const { milestones, achievements, stats, streak } = useProgressStore();
   const { entries, myEntryId } = useLeaderboardStore();
 
+  const conceptsMastered = stats.conceptsMastered ?? [];
   const unlockedMilestones = milestones.filter((m) => m.unlocked);
   const nextMilestones = milestones.filter((m) => !m.unlocked).slice(0, 4);
   const unlockedAchievements = achievements.filter((a) => a.unlockedAt);
@@ -99,19 +100,19 @@ export function AchievementsPanel() {
             <div className="flex-1">
               <div className="flex justify-between text-[10px] text-primary/60 font-hud mb-1">
                 <span>Overall Mastery</span>
-                <span>{stats.conceptsMastered.filter(c => c.mastered).length}/{stats.conceptsMastered.length} concepts</span>
+                <span>{conceptsMastered.filter(c => c.mastered).length}/{conceptsMastered.length} concepts</span>
               </div>
               <div className="w-full h-2 bg-background/80 rounded-full overflow-hidden">
                 <motion.div
                   className="h-full bg-gradient-to-r from-purple-500/80 to-purple-400/60 rounded-full"
-                  animate={{ width: `${stats.conceptsMastered.length > 0 ? Math.round(stats.conceptsMastered.reduce((s, c) => s + c.proficiency, 0) / stats.conceptsMastered.length) : 0}%` }}
+                  animate={{ width: `${conceptsMastered.length > 0 ? Math.round(conceptsMastered.reduce((s, c) => s + c.proficiency, 0) / conceptsMastered.length) : 0}%` }}
                 />
               </div>
             </div>
           </div>
-          {stats.conceptsMastered.length > 0 && (
+          {conceptsMastered.length > 0 && (
             <div className="flex flex-col gap-1.5 max-h-32 overflow-y-auto">
-              {stats.conceptsMastered.map((c) => (
+              {conceptsMastered.map((c) => (
                 <div key={c.conceptId} className="flex items-center gap-2 text-[10px] font-hud">
                   <Zap className={`w-3 h-3 ${c.mastered ? 'text-yellow-400' : 'text-primary/20'}`} />
                   <span className="flex-1 text-primary/70 truncate">{c.conceptId.replace(/^p(\d+)t(\d+)$/, 'Phase $1, Task $2')}</span>
