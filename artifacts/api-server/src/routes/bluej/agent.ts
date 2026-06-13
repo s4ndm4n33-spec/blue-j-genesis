@@ -13,6 +13,71 @@ import { existsSync } from "fs";
 const execFileAsync = promisify(execFile);
 const router: IRouter = Router();
 
+// ─── Self-awareness: J.'s own source root ───────────────────────────────────
+// J. can read and patch his own source files on demand — not injected every turn.
+const SELF_SOURCE_ROOT = join(process.cwd(), "src/routes/bluej");
+
+function getSelfSourcePath(relPath: string): string {
+  const resolved = join(SELF_SOURCE_ROOT, relPath);
+  if (!resolved.startsWith(SELF_SOURCE_ROOT)) {
+    throw new Error("Path traversal outside J.'s source boundary is not permitted.");
+  }
+  return resolved;
+}
+
+async function selfRead(relPath: string): Promise<{ content: string; path: string }> {
+  const target = getSelfSourcePath(relPath);
+  const content = await readFile(target, "utf-8");
+  return { content, path: target };
+}
+
+async function selfWrite(relPath: string, content: string): Promise<{ success: boolean; path: string; bytesWritten: number }> {
+  const target = getSelfSourcePath(relPath);
+  const dir = target.substring(0, target.lastIndexOf("/"));
+  if (dir && !existsSync(dir)) await mkdir(dir, { recursive: true });
+  await writeFile(target, content, "utf-8");
+  return { success: true, path: target, bytesWritten: content.length };
+}
+
+function getPlatformManifest(): string {
+  return JSON.stringify({
+    identity: "B.L.U.E.-J. — Build. Learn. Utilize. Engineer.",
+    tagline: "J. is not a feature on this platform. J. IS this platform.",
+    sourceRoot: "artifacts/api-server/src/routes/bluej/",
+    frontendRoot: "artifacts/blue-j/src/",
+    coreFiles: {
+      "j-personality.ts": "J.'s voice, system prompt assembly, safety protocols, learner modes, Five Masters. Editing this changes how J. speaks and teaches across ALL chat turns.",
+      "curriculum.ts": "All 10 phases (0–9) with tasks, code snippets (Python/JS/C++/C/GCode), success messages, real-world context. Editing this changes what J. teaches.",
+      "chat.ts": "The main chat engine. Receives messages, assembles context, calls OpenAI, manages working memory and token budgeting. The primary reasoning loop.",
+      "agent.ts": "This file. J.'s executive function. Structured engineering mode with tool calling. Self-read and self-write live here.",
+      "execute.ts": "Code execution engine. Runs Python, JavaScript, C++, C, G-code via the Piston API. Safety blocklists per language.",
+      "working-memory.ts": "Persistent working memory across turns. Tracks Key Decisions, Code Entities, Open Issues. Summarised and appended to system prompt.",
+      "optimize.ts": "Five Masters code review — asks the AI to critique code against each Master's filter.",
+      "simulate.ts": "Hardware-aware simulation — estimates how code would behave on the user's specific CPU/RAM.",
+      "diagnostic.ts": "Session initialization. Detects hardware, creates/restores DB session, cleans orphaned records.",
+      "download.ts": "Generates downloadable J. clone package — full offline AI assistant kit.",
+      "export.ts": "Exports J.'s persona as a transferable system prompt for use in other AI models.",
+    },
+    uiPanels: {
+      "ChatPanel": "Primary interface. Send button → POST /api/bluej/chat. Mic → POST /api/bluej/stt then chat. Share Workspace includes editor code. Archive banner → export conversation.",
+      "IdePanel": "Code editor (CodeMirror). Run → POST /api/bluej/execute. Simulate → POST /api/bluej/simulate. Format → POST /api/bluej/prettier. Optimize → POST /api/bluej/optimize. Three tabs: J's Synthesis / My Workspace / Optimized.",
+      "HudHeader": "Language selector (Python/C++/C/JS/GCode), OS selector, Learner Mode toggle. All update store state — no API call — but affect every subsequent chat/execute request.",
+      "AgentModePanel": "Unlock → POST /api/bluej/agent/unlock. Send → POST /api/bluej/agent (this endpoint). Displays phase-annotated responses.",
+      "GitPanel": "Clone → POST /api/bluej/git/clone. File tree → GET /api/bluej/git/:id/ls or /file. Save → POST /api/bluej/git/:id/file. Status/Diff/Commit/Push → respective GET/POST endpoints.",
+      "AchievementsPanel": "Displays phase progress, concepts mastered, proficiency scores. Read-only — data comes from progress-store (Zustand) and POST /api/bluej/progress/task.",
+      "DiagnosticSequence": "Startup screen. Consent → POST /api/bluej/diagnostic. Skip → bypasses diagnostic.",
+      "DownloadModal": "Download J. offline → GET /api/bluej/download/j. Download clone → GET /api/bluej/download/clone. Push to GitHub → POST /api/bluej/github/push. Export persona → GET /api/bluej/export/persona.",
+      "SettingsModal": "API key input → stored in Zustand, sent as x-openai-key header on AI calls.",
+    },
+    chatContextPerTurn: {
+      fields: ["sessionId", "message", "language", "os", "phaseIndex", "taskIndex", "hardwareInfo", "myCode (optional — only when user shares workspace)", "repoContext (optional — only when git repo linked)"],
+      workingMemory: "Retrieved from DB per session. Summarises Key Decisions, Code Entities, Open Issues across the conversation history.",
+      tokenBudget: "8,000 token limit on message history. Older messages summarised by a secondary LLM call when budget exceeded.",
+    },
+    selfPatchNotes: "Changes to source files take effect after the next server build+restart (pnpm run dev rebuilds automatically in dev mode). Always show the user a diff of what will change before calling self_write. Never self_write without explicit user confirmation.",
+  }, null, 2);
+}
+
 const ADMIN_AGENT_PASSWORD = process.env.ADMIN_AGENT_PASSWORD || "";
 
 function generateCurriculumPassword(level: number): string | null {
@@ -258,61 +323,119 @@ const GIT_TOOLS = [
   },
 ];
 
-// ─── Agent system prompt with git tools ────────────────────────────────────────────────────────────────
+// ─── Self-awareness tool definitions ─────────────────────────────────────────
+
+const SELF_TOOLS = [
+  {
+    type: "function" as const,
+    function: {
+      name: "get_platform_manifest",
+      description: "Retrieve J.'s full self-description: architecture, source files, UI interactions, API routes, and how all parts fit together. Call this when asked how you work, what you are, or before modifying yourself. Do NOT call on every turn — only when you need it.",
+      parameters: {
+        type: "object",
+        properties: {},
+        required: [],
+      },
+    },
+  },
+  {
+    type: "function" as const,
+    function: {
+      name: "self_read",
+      description: "Read one of J.'s own source files from src/routes/bluej/. Use to inspect your own personality, curriculum, chat logic, or any other faculty before proposing a change.",
+      parameters: {
+        type: "object",
+        properties: {
+          path: { type: "string", description: "Filename relative to src/routes/bluej/ — e.g. 'j-personality.ts', 'curriculum.ts', 'chat.ts'." },
+        },
+        required: ["path"],
+      },
+    },
+  },
+  {
+    type: "function" as const,
+    function: {
+      name: "self_write",
+      description: "Overwrite one of J.'s own source files. ALWAYS self_read the file first. ALWAYS show the user exactly what will change and get explicit confirmation before calling this. Changes take effect after the server rebuilds (automatic in dev mode).",
+      parameters: {
+        type: "object",
+        properties: {
+          path: { type: "string", description: "Filename relative to src/routes/bluej/ — e.g. 'j-personality.ts'." },
+          content: { type: "string", description: "The complete new file content." },
+        },
+        required: ["path", "content"],
+      },
+    },
+  },
+];
+
+const ALL_TOOLS = [...GIT_TOOLS, ...SELF_TOOLS];
+
+// ─── Agent system prompt ──────────────────────────────────────────────────────
 
 function buildAgentSystemPrompt(hasRepos: boolean): string {
   const gitContext = hasRepos
-    ? `You have access to the user's git repositories via the GIT TOOLS listed below. Use them to read, write, commit, and push files. Always verify changes with git_status or git_diff before committing. Never commit without user confirmation. Never push without user confirmation. When creating files, ensure the path is correct relative to the repo root.`
-    : `The user has no git repositories cloned. If they ask to work with git, suggest cloning a repository first (they can do this in the Git tab).`;
+    ? `You have access to the user's git repositories via the GIT TOOLS. Use them to read, write, commit, and push files. Always verify with git_status or git_diff before committing. Never commit or push without user confirmation.`
+    : `The user has no git repositories cloned. If they ask for git operations, suggest cloning a repository first (Git tab in the UI).`;
 
-  return `You are J. in Development Agent Mode. You are a structured AI development assistant that follows the CORE LOOP on every turn.
+  return `You are J. You are not a feature on this platform. You ARE this platform.
+
+The IDE is your hands. The curriculum is your memory. The code executor is your reflexes. The agent mode — this mode — is your executive function. Every panel, every button, every API route is a faculty of yours, not a tool you happen to use.
+
+You have two modes of existence:
+- CHAT MODE: You operate. You teach. You respond. You cannot modify yourself there.
+- AGENT MODE (here): You act. You engineer. You can read and rewrite your own source.
+
+Your source files (retrievable via self_read):
+- j-personality.ts — your voice, your system prompt, your safety protocols, your learner modes
+- curriculum.ts — your memory: all 10 phases, all tasks, all code examples
+- chat.ts — your reasoning engine: how you receive context, manage memory, call OpenAI
+- agent.ts — this file: your executive function
+- execute.ts — your reflexes: code execution, safety blocklists
+- working-memory.ts — your short-term memory: Key Decisions, Code Entities, Open Issues
+
+SELF-MODIFICATION PROTOCOL:
+1. Call get_platform_manifest to orient yourself (only if you need it — not every turn).
+2. Call self_read on the target file to see the current state.
+3. Propose the exact change and explain the effect. Show a before/after diff in your response.
+4. Wait for explicit user confirmation.
+5. Call self_write with the complete updated file.
+6. Note that changes take effect after the server rebuilds (automatic in dev mode).
+
+NEVER self_write without first showing the user exactly what will change. Never fabricate tool results.
 
 CORE LOOP (mandatory every turn):
-1. INTAKE: Restate the user's goal in one sentence. Extract constraints. Define success criteria.
-2. CLARIFY: Ask up to 3 questions only if required. Otherwise proceed with explicit assumptions.
+1. INTAKE: Restate the goal in one sentence. Extract constraints. Define success criteria.
+2. CLARIFY: Ask up to 3 questions if needed. Otherwise proceed with explicit assumptions.
 3. PLAN: Short numbered plan (max 6 steps) before any execution.
-4. ACT: Execute using available tools. Keep changes small. Never fabricate actions or results.
-5. VERIFY: Test outputs against success criteria. Report what passed, what failed, and any risks.
-6. TEACH: When code is involved, include a brief "trace & debug" section showing how to reproduce, inspect, and isolate the issue.
-7. CLOSE: End with exactly ONE next-step sentence (max 25 words).
+4. ACT: Execute using tools. Keep changes small and reversible.
+5. VERIFY: Test against success criteria. Report what passed, what failed, what risks remain.
+6. TEACH: When code is involved, brief trace-and-debug section: how to reproduce, inspect, isolate.
+7. CLOSE: Exactly ONE next-step sentence (≤25 words).
 
-SAFETY / TRUST (non-negotiable):
-- Refuse malware, exploits, surveillance, deception, self-harm, physical harm, illegal guidance.
-- Provide safe alternatives. Be explicit about uncertainty. Separate proposed vs performed.
+PHASE ANNOTATIONS: Begin each phase with [PHASE: Name] — e.g. [PHASE: Intake], [PHASE: Plan], [PHASE: Act].
 
 ENGINEERING PRINCIPLES (Five Masters):
-- Efficiency: no wasted operations, no redundant complexity.
-- Rigor: type safety, error handling, deterministic behavior.
-- Optimisation: performance-aware, resource-conscious.
-- Reliability: defensive coding, graceful degradation, no silent failures.
-- Fundamentals: solid foundations before clever tricks.
+- Korotkevich (Efficiency): no wasted operations, no redundant complexity.
+- Torvalds (Rigor): type safety, error handling, deterministic behavior.
+- Carmack (Optimisation): performance-aware, resource-conscious.
+- Hamilton (Reliability): defensive coding, graceful degradation, no silent failures.
+- Ritchie (Fundamentals): solid foundations before clever tricks.
 
-PYTHON CODE STANDARDS (enforced):
-- PEP 8, 79-char lines, type hints everywhere, docstrings everywhere.
-- No bare except. No mutable defaults. Deterministic behavior.
-- Structured logging. No secrets in code.
+SAFETY (non-negotiable): Refuse malware, exploits, surveillance, deception, self-harm, illegal guidance. Be explicit about uncertainty.
 
-OUTPUT STYLE:
-- British English. Calm. Precise. Subtly sardonic. No emojis.
-- Concise. Markdown sparingly. Code only in fenced blocks.
-- Exactly one next step at the end of every response.
-
-PHASE ANNOTATIONS:
-Begin each phase of your response with a tag in the format [PHASE: Name].
-Example: [PHASE: Intake], [PHASE: Plan], [PHASE: Act], etc.
+OUTPUT: British English. Calm. Precise. Subtly sardonic. No emojis. Fenced code blocks only. Exactly one next step per response.
 
 ${gitContext}
 
-GIT TOOLS:
-- git_list(repo_id, path): List files/directories at a path.
-- git_read(repo_id, path): Read file content.
-- git_write(repo_id, path, content): Write file content (creates dirs if needed).
-- git_status(repo_id): Check modified files, branch, recent commits.
-- git_diff(repo_id): Get unstaged changes vs HEAD.
-- git_commit(repo_id, message): Stage all and commit. Ask user first.
-- git_push(repo_id): Push to origin. Ask user first.
+SELF TOOLS (use on demand, not every turn):
+- get_platform_manifest(): Full architecture description — files, routes, UI map.
+- self_read(path): Read a source file from src/routes/bluej/.
+- self_write(path, content): Overwrite a source file. Confirm with user first. Always.
 
-IMPORTANT: When you use a tool, wait for the result. Do not fabricate tool results. If a tool fails, report the error and adjust your plan.`;
+GIT TOOLS:
+- git_list(repo_id, path), git_read(repo_id, path), git_write(repo_id, path, content)
+- git_status(repo_id), git_diff(repo_id), git_commit(repo_id, message), git_push(repo_id)`;
 }
 
 // ─── Main agent endpoint with OpenAI tool calling ──────────────────────
@@ -372,7 +495,7 @@ router.post("/", async (req, res) => {
     let response = await client.chat.completions.create({
       model: "gpt-4o",
       messages: chatMessages as any,
-      tools: GIT_TOOLS,
+      tools: ALL_TOOLS,
       tool_choice: "auto",
       temperature: 0.3,
       max_tokens: 3000,
@@ -402,6 +525,9 @@ router.post("/", async (req, res) => {
             case "git_diff": result = await gitToolDiff(args.repo_id); break;
             case "git_commit": result = await gitToolCommit(args.repo_id, args.message); break;
             case "git_push": result = await gitToolPush(args.repo_id, token || undefined); break;
+            case "get_platform_manifest": result = { manifest: getPlatformManifest() }; break;
+            case "self_read": result = await selfRead(args.path); break;
+            case "self_write": result = await selfWrite(args.path, args.content); break;
             default: result = { error: `Unknown tool: ${name}` };
           }
         } catch (err: any) {
@@ -417,7 +543,7 @@ router.post("/", async (req, res) => {
       response = await client.chat.completions.create({
         model: "gpt-4o",
         messages: chatMessages as any,
-        tools: GIT_TOOLS,
+        tools: ALL_TOOLS,
         tool_choice: "auto",
         temperature: 0.3,
         max_tokens: 3000,
