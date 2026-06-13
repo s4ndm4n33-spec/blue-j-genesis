@@ -390,6 +390,35 @@ export const useProgressStore = create<ProgressState>()(
         if (unlocks.length > 0) set({ achievements: updated, newUnlocks: [...get().newUnlocks, ...unlocks] });
       },
     }),
-    { name: 'bluej-progress' }
+    {
+      name: 'bluej-progress',
+      version: 1,
+      // Passthrough migrate: the `merge` below does the real shape-repair, but a
+      // migrate function must exist so a version mismatch doesn't log an error and
+      // discard data for users whose payload predates the version field.
+      migrate: (persisted) => persisted as ProgressState,
+      // Deep-merge persisted state over defaults. Zustand's default merge is a
+      // shallow root-level merge, which REPLACES `stats` wholesale — so a payload
+      // saved before a field existed (e.g. conceptsMastered) rehydrates without it
+      // and crashes any consumer that iterates it ("X is not iterable"). Merge the
+      // nested objects and coerce array-typed fields so they are always arrays.
+      merge: (persisted, current) => {
+        const p = (persisted ?? {}) as Partial<ProgressState>;
+        const ps = (p.stats ?? {}) as Partial<ProgressStats>;
+        const stats: ProgressStats = {
+          ...current.stats,
+          ...ps,
+          conceptsMastered: Array.isArray(ps.conceptsMastered) ? ps.conceptsMastered : current.stats.conceptsMastered,
+          languagesUsed: Array.isArray(ps.languagesUsed) ? ps.languagesUsed : current.stats.languagesUsed,
+          modesUsed: Array.isArray(ps.modesUsed) ? ps.modesUsed : current.stats.modesUsed,
+        };
+        return {
+          ...current,
+          ...p,
+          stats,
+          streak: { ...current.streak, ...(p.streak ?? {}) },
+        };
+      },
+    }
   )
 );

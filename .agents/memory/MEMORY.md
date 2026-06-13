@@ -1,2 +1,1 @@
-- [Agent Mode Git Integration](agent-git-integration.md) — Development Agent uses OpenAI function-calling to read, write, commit, and push files via the git panel.
-- [BlueJ concept-mastery](bluej-concept-mastery.md) — empirical graded assessments + best-score retries; quiz keys gated until mastery, progress hydration must be DB-authoritative.
+- [Zustand persist schema evolution](zustand-persist-schema-evolution.md) — adding a field to a persisted nested slice crashes users with old localStorage; default merge is shallow, use a custom merge + coerce arrays.
