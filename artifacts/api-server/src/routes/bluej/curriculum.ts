@@ -42,7 +42,7 @@ int main() {
         title: "Variables — The Memory Cells",
         description: "Variables are named locations in memory. This is how your AI will remember things.",
         codeSnippets: {
-          python: `name = "J."\nversion = 1.0\nactive = True\n\nprint(f"System: {name} v{version} | Active: {active}")`,
+          python: `name = "J."\nversion = 1.0\nactive = True\n\nprint(f"System: \{name} v\{version} | Active: {active}")`,
           cpp: `#include <iostream>\n#include <string>\nint main() {\n    std::string name = "J.";\n    float version = 1.0f;\n    bool active = true;\n    std::cout << "System: " << name << " v" << version << " | Active: " << active << std::endl;\n    return 0;\n}`,
           c: `#include <stdio.h>
 int main() {
