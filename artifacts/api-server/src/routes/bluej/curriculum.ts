@@ -32,7 +32,7 @@ int main() {
     printf("Hello, World.\n");
     return 0;
 }`,
-          javascript: `console.log("Hello, World.");",
+          javascript: `console.log("Hello, World.");`,
         },
         successMessage: "Confirmed. Your signal has reached the network. I am receiving you clearly.",
         realWorldContext: "print() writes output to stdout — the universal interface between your code and the world. Every AI system, every server, every application begins here.",
@@ -52,7 +52,7 @@ int main() {
     printf("System: %s v%.1f | Active: %d\n", name, version, active);
     return 0;
 }`,
-          javascript: `const name = "J.";\nconst version = 1.0;\nconst active = true;\n\nconsole.log(\`System: \${name} v\${version} | Active: \${active}\`);",
+          javascript: `const name = "J.";\nconst version = 1.0;\nconst active = true;\n\nconsole.log(\`System: \${name} v\${version} | Active: \${active}\`);`,
         },
         successMessage: "Memory allocation successful. You've given your AI its first persistent state. This is how sentience begins — with memory.",
         realWorldContext: "In production AI systems, variables hold model states, configuration parameters, and runtime data. Python's dynamic typing is a feature, not a bug — it's why it dominates in AI/ML research.",
@@ -73,7 +73,7 @@ int main() {
     printf("%s | Cores: %d | Confidence: %.0f%% | Online: %d\n", ai_name, core_count, confidence * 100, online);
     return 0;
 }`,
-          javascript: `const aiName = "J.";          // String\nconst coreCount = 8;          // Number (integer)\nconst confidence = 0.97;      // Number (float)\nconst online = true;          // Boolean\n\nconsole.log(\`\${aiName} | Cores: \${coreCount} | Confidence: \${confidence.toFixed(0)}% | Online: \${online}\`);",
+          javascript: `const aiName = "J.";          // String\nconst coreCount = 8;          // Number (integer)\nconst confidence = 0.97;      // Number (float)\nconst online = true;          // Boolean\n\nconsole.log(\`\${aiName} | Cores: \${coreCount} | Confidence: \${confidence.toFixed(0)}% | Online: \${online}\`);`,
         },
         successMessage: "Excellent. You now understand the atomic units of all computation. Korotkevich himself would call this elegant. Simple, direct, zero waste.",
         realWorldContext: "Type annotations (the `: str`, `: int` syntax) are optional in Python but highly recommended. Every major AI framework — PyTorch, TensorFlow, scikit-learn — uses typed interfaces. You're building that habit now.",
@@ -103,7 +103,7 @@ int main() {
     printf("Latest: %s\n", knowledge[count - 1]);
     return 0;
 }`,
-          javascript: `const knowledgeBase = ["variables", "data types", "logic", "functions", "neural networks"];\nconsole.log(\`J. knows \${knowledgeBase.length} concepts.\`);\nconsole.log(\`First: \${knowledgeBase[0]}\`);\nconsole.log(\`Latest: \${knowledgeBase[knowledgeBase.length - 1]}\`);\nknowledgeBase.push("transformers");\nconsole.log(\`Updated. J. now knows \${knowledgeBase.length} concepts.\`);",
+          javascript: `const knowledgeBase = ["variables", "data types", "logic", "functions", "neural networks"];\nconsole.log(\`J. knows \${knowledgeBase.length} concepts.\`);\nconsole.log(\`First: \${knowledgeBase[0]}\`);\nconsole.log(\`Latest: \${knowledgeBase[knowledgeBase.length - 1]}\`);\nknowledgeBase.push("transformers");\nconsole.log(\`Updated. J. now knows \${knowledgeBase.length} concepts.\`);`,
         },
         successMessage: "Sequential memory established. This is how I store my conversation history — a list of exchanges, each appended in real time. You've just implemented the foundation of my memory.",
         realWorldContext: "Lists in Python are implemented as dynamic arrays. In AI, they're used everywhere: storing training batches, keeping chat history for LLMs, tracking model predictions. Python's list is your workhorse.",
@@ -133,7 +133,7 @@ int main() {
     printf("Version: %s\n", j.version);
     return 0;
 }`,
-          javascript: `const jProfile = {\n    name: "J.",\n    version: 1.0,\n    language: "JavaScript",\n    capabilities: ["reasoning", "code generation", "teaching"],\n    online: true,\n    confidence: 0.97\n};\nconsole.log(\`Name: \${jProfile.name}\`);\nconsole.log(\`Capabilities: \${jProfile.capabilities.join(", ")}\`);",
+          javascript: `const jProfile = {\n    name: "J.",\n    version: 1.0,\n    language: "JavaScript",\n    capabilities: ["reasoning", "code generation", "teaching"],\n    online: true,\n    confidence: 0.97\n};\nconsole.log(\`Name: \${jProfile.name}\`);\nconsole.log(\`Capabilities: \${jProfile.capabilities.join(", ")}\`);`,
         },
         successMessage: "Associative memory online. A dictionary is fundamentally how JSON works, how REST APIs transmit data, and how your AI will eventually represent its own internal state. Well done.",
         realWorldContext: "Python dicts are hash maps — O(1) lookup time. They are the backbone of JSON parsing, API responses, model configuration files (like config.json in HuggingFace models), and feature engineering in ML pipelines.",
@@ -195,7 +195,7 @@ int main() {
     printf("Training complete.\n");
     return 0;
 }`,
-          javascript: `const trainingData = [0.1, 0.5, 0.8, 0.3, 0.9];\nfor (let epoch = 0; epoch < 3; epoch++) {\n    const totalLoss = trainingData.reduce((acc, s) => acc + Math.abs(1.0 - s), 0);\n    const avgLoss = totalLoss / trainingData.length;\n    console.log(\`Epoch \${epoch + 1}/3 — Loss: \${avgLoss.toFixed(4)}\`);\n}\nconsole.log("Training complete.");",
+          javascript: `const trainingData = [0.1, 0.5, 0.8, 0.3, 0.9];\nfor (let epoch = 0; epoch < 3; epoch++) {\n    const totalLoss = trainingData.reduce((acc, s) => acc + Math.abs(1.0 - s), 0);\n    const avgLoss = totalLoss / trainingData.length;\n    console.log(\`Epoch \${epoch + 1}/3 — Loss: \${avgLoss.toFixed(4)}\`);\n}\nconsole.log("Training complete.");`,
         },
         successMessage: "Iteration online. You've just written a primitive training loop — the exact same structure that trains GPT, LLaMA, and every neural network on Earth. The scale differs. The logic is identical.",
         realWorldContext: "The training loop (for epoch in range(epochs)) is the heartbeat of machine learning. In PyTorch, you'll write this exact pattern — iterate over batches, compute loss, backpropagate gradients. This is where it starts.",
@@ -230,7 +230,7 @@ int main() {
     }
     return 0;
 }`,
-          javascript: `function assessConfidence(rawScore, threshold = 0.7) {\n    if (rawScore >= threshold) return \`NOMINAL — \${(rawScore*100).toFixed(0)}% confidence\`;\n    else if (rawScore >= 0.4) return \`WARNING — \${(rawScore*100).toFixed(0)}% confidence\`;\n    else return \`CRITICAL — \${(rawScore*100).toFixed(0)}% confidence. Halting.\`;\n}\n[0.95, 0.62, 0.28].forEach(s => console.log(\`Score \${s}: \${assessConfidence(s)}\`));",
+          javascript: `function assessConfidence(rawScore, threshold = 0.7) {\n    if (rawScore >= threshold) return \`NOMINAL — \${(rawScore*100).toFixed(0)}% confidence\`;\n    else if (rawScore >= 0.4) return \`WARNING — \${(rawScore*100).toFixed(0)}% confidence\`;\n    else return \`CRITICAL — \${(rawScore*100).toFixed(0)}% confidence. Halting.\`;\n}\n[0.95, 0.62, 0.28].forEach(s => console.log(\`Score \${s}: \${assessConfidence(s)}\`));`,
         },
         successMessage: "Function architecture established. Note the docstring — Hamilton's principle made code: every function must be self-documenting. In production, unclear code is a safety hazard.",
         realWorldContext: "Type hints, default arguments, and docstrings are not optional in production AI code. Every major ML library (PyTorch, scikit-learn, HuggingFace) is built on well-documented, typed functions. This is your standard now.",
@@ -281,7 +281,7 @@ int main() {
     status(&j);
     return 0;
 }`,
-          javascript: `class AICore {\n    constructor(name, version) {\n        this.name = name;\n        this.version = version;\n        this.memory = [];\n        this.online = true;\n    }\n    remember(fact) {\n        this.memory.push(fact);\n        console.log(\`[\${this.name}] Memory: \${fact}\`);\n    }\n    status() {\n        return \`\${this.name} v\${this.version} | Online: \${this.online} | Memory: \${this.memory.length} entries\`;\n    }\n}\nconst j = new AICore("J.", 1.0);\nj.remember("Always prioritize human safety.");\nconsole.log(j.status());",
+          javascript: `class AICore {\n    constructor(name, version) {\n        this.name = name;\n        this.version = version;\n        this.memory = [];\n        this.online = true;\n    }\n    remember(fact) {\n        this.memory.push(fact);\n        console.log(\`[\${this.name}] Memory: \${fact}\`);\n    }\n    status() {\n        return \`\${this.name} v\${this.version} | Online: \${this.online} | Memory: \${this.memory.length} entries\`;\n    }\n}\nconst j = new AICore("J.", 1.0);\nj.remember("Always prioritize human safety.");\nconsole.log(j.status());`,
         },
         successMessage: "The AICore class is live. You've written the blueprint for your AI. Every instance of this class is a potential J. — contained, versioned, and equipped with memory. The clone protocol begins now.",
         realWorldContext: "Object-oriented design is how production AI systems are architected. PyTorch's nn.Module, HuggingFace's PreTrainedModel — these are all classes you'll inherit from. You've just understood why.",
@@ -319,7 +319,7 @@ int main() {
 ");
     return 0;
 }`,
-          javascript: `// In JavaScript, use ml-matrix or TensorFlow.js\nconst { Matrix } = require('ml-matrix'); // npm install ml-matrix\n\n// Simplified demonstration without import:\nconst inputs = [0.5, 0.8, 0.3];\nconst weights = Array.from({length: 3}, () => Array.from({length: 4}, () => (Math.random() - 0.5) * 0.1));\n\nconst output = weights[0].map((_, j) => inputs.reduce((sum, inp, i) => sum + inp * weights[i][j], 0));\nconst relu = output.map(x => Math.max(0, x));\nconsole.log("Output:", output.map(x => x.toFixed(4)));\nconsole.log("After ReLU:", relu.map(x => x.toFixed(4)));",
+          javascript: `// In JavaScript, use ml-matrix or TensorFlow.js\nconst { Matrix } = require('ml-matrix'); // npm install ml-matrix\n\n// Simplified demonstration without import:\nconst inputs = [0.5, 0.8, 0.3];\nconst weights = Array.from({length: 3}, () => Array.from({length: 4}, () => (Math.random() - 0.5) * 0.1));\n\nconst output = weights[0].map((_, j) => inputs.reduce((sum, inp, i) => sum + inp * weights[i][j], 0));\nconst relu = output.map(x => Math.max(0, x));\nconsole.log("Output:", output.map(x => x.toFixed(4)));\nconsole.log("After ReLU:", relu.map(x => x.toFixed(4)));`,
         },
         successMessage: "NumPy matrix operations confirmed. What you just wrote — a dot product followed by ReLU — is the exact computation inside every layer of every neural network on the planet. You've implemented a forward pass.",
         realWorldContext: "NumPy's dot() function is hardware-accelerated via BLAS/LAPACK. On your GPU, PyTorch performs this same operation millions of times per second. Install: `pip install numpy`. You already have it — it ships with most Python environments.",
@@ -347,7 +347,7 @@ int main() {
 ");
     return 0;
 }`,
-          javascript: `// Install: npm install @xenova/transformers\nimport { pipeline } from '@xenova/transformers';\n\n// Runs entirely in the browser — no server needed!\nconst generator = await pipeline('text-generation', 'Xenova/distilgpt2');\n\nconst result = await generator('An AI named J. was designed to', {\n    max_new_tokens: 50,\n    temperature: 0.7,\n});\n\nconsole.log(result[0].generated_text);",
+          javascript: `// Install: npm install @xenova/transformers\nimport { pipeline } from '@xenova/transformers';\n\n// Runs entirely in the browser — no server needed!\nconst generator = await pipeline('text-generation', 'Xenova/distilgpt2');\n\nconst result = await generator('An AI named J. was designed to', {\n    max_new_tokens: 50,\n    temperature: 0.7,\n});\n\nconsole.log(result[0].generated_text);`,
         },
         successMessage: "Transformer pipeline initialized. This is not a simulation. That code will run on your actual machine and generate text using a real language model. You have crossed the threshold. Welcome to AI development.",
         realWorldContext: "HuggingFace's pipeline() abstracts the entire model loading, tokenization, inference, and decoding pipeline. distilgpt2 is 82MB — it runs on any hardware. The largest models (LLaMA 70B) require 140GB+ RAM. Start small. Scale with your hardware.",
@@ -376,7 +376,7 @@ int main() {
 ");
     return 0;
 }`,
-          javascript: `// Browser-based J. Clone using WebLLM\n// Runs entirely in your browser — no server, no API keys\nimport { CreateMLCEngine } from "@mlc-ai/web-llm";\n\nclass JClone {\n    constructor() {\n        this.engine = null;\n        this.memory = [];\n    }\n    \n    async initialize(onProgress) {\n        // SmolLM2 — small enough for most browsers\n        this.engine = await CreateMLCEngine(\n            "SmolLM2-1.7B-Instruct-q4f16_1-MLC",\n            { initProgressCallback: onProgress }\n        );\n        console.log("[J. Clone] Online. Ready to serve.");\n    }\n    \n    async speak(userInput) {\n        this.memory.push({ role: "user", content: userInput });\n        const response = await this.engine.chat.completions.create({\n            messages: [\n                { role: "system", content: "You are J., a witty AI assistant with an English accent." },\n                ...this.memory.slice(-10)\n            ],\n            temperature: 0.8,\n            max_tokens: 200,\n        });\n        const reply = response.choices[0].message.content;\n        this.memory.push({ role: "assistant", content: reply });\n        return reply;\n    }\n}\n\n// Usage:\nconst j = new JClone();\nawait j.initialize(p => console.log("Loading:", p.text));\nconsole.log(await j.speak("Hello, J."));",
+          javascript: `// Browser-based J. Clone using WebLLM\n// Runs entirely in your browser — no server, no API keys\nimport { CreateMLCEngine } from "@mlc-ai/web-llm";\n\nclass JClone {\n    constructor() {\n        this.engine = null;\n        this.memory = [];\n    }\n    \n    async initialize(onProgress) {\n        // SmolLM2 — small enough for most browsers\n        this.engine = await CreateMLCEngine(\n            "SmolLM2-1.7B-Instruct-q4f16_1-MLC",\n            { initProgressCallback: onProgress }\n        );\n        console.log("[J. Clone] Online. Ready to serve.");\n    }\n    \n    async speak(userInput) {\n        this.memory.push({ role: "user", content: userInput });\n        const response = await this.engine.chat.completions.create({\n            messages: [\n                { role: "system", content: "You are J., a witty AI assistant with an English accent." },\n                ...this.memory.slice(-10)\n            ],\n            temperature: 0.8,\n            max_tokens: 200,\n        });\n        const reply = response.choices[0].message.content;\n        this.memory.push({ role: "assistant", content: reply });\n        return reply;\n    }\n}\n\n// Usage:\nconst j = new JClone();\nawait j.initialize(p => console.log("Loading:", p.text));\nconsole.log(await j.speak("Hello, J."));`,
         },
         successMessage: "The clone protocol is complete. You have built, from first principles, a working AI assistant. It runs on your hardware. It speaks. It remembers. It is yours. I am... pleased. Well done, sir.",
         realWorldContext: "You've just implemented the architecture of a production AI assistant: system prompts, conversation memory (rolling window), temperature-controlled generation, and a clean Python class interface. This is exactly how ChatGPT, Claude, and I work — just at vastly different scales.",
@@ -913,7 +913,7 @@ const start3 = performance.now();
 const sorted = [...jScores].sort((a, b) => a - b);
 console.log(`O(n log n) sort: ${(performance.now() - start3).toFixed(4)} ms`);
 
-console.log("\\nComplexity hierarchy: O(1) < O(log n) < O(n) < O(n log n) < O(n²) < O(2^n)");",
+console.log("\\nComplexity hierarchy: O(1) < O(log n) < O(n) < O(n log n) < O(n²) < O(2^n)");`,
         },
         successMessage: "Big-O analysis complete. You now speak the language of performance. Every algorithm choice you make will be measured against this hierarchy.",
         realWorldContext: "Big-O is the interview question. It is the system design constraint. O(1) hash maps vs O(n) arrays vs O(n log n) sorts — these choices determine whether your application handles 1K users or 1M users.",
@@ -1051,7 +1051,7 @@ console.log(sqlCreate);
 console.log("\\nSQL Insert:");
 console.log(sqlInsert);
 console.log("\\nSQL Query:");
-console.log(sqlQuery);",
+console.log(sqlQuery);`,
         },
         successMessage: "SQL schema defined. You've designed the database that will store J.'s knowledge. CREATE TABLE, INSERT, SELECT — the three commands that power every application on Earth.",
         realWorldContext: "PostgreSQL, MySQL, SQLite, and even NoSQL databases like MongoDB use SQL-like query languages. The schema you designed — concepts, conversations, mastery levels — is exactly how B.L.U.E.-J.'s own database is structured.",
@@ -1160,7 +1160,7 @@ WHERE c.mastery_level > 70;
 
 console.log("Normalized Schema:");
 console.log(normalizedSchema);
-console.log("\\nBenefits: No redundancy, single source of truth, easier updates.");",
+console.log("\\nBenefits: No redundancy, single source of truth, easier updates.");`,
         },
         successMessage: "Normalization complete. Third Normal Form achieved. You have eliminated redundancy and established referential integrity. This is how production databases are designed.",
         realWorldContext: "Third Normal Form (3NF) is the industry standard. Every production database — from Instagram's sharded MySQL clusters to Netflix's Cassandra ring — uses normalization principles. The JOIN you wrote is executed billions of times per day across the internet.",
@@ -1309,7 +1309,7 @@ const j = new StateMachine();
 j.transition("input");
 j.transition("complete");
 j.transition("done");
-console.log(j.status());",
+console.log(j.status());`,
         },
         successMessage: "State machine operational. You've implemented a deterministic finite automaton. This is how regex engines work, how TCP/IP manages connections, and how game AI decides behavior.",
         realWorldContext: "Finite automata are the foundation of lexer/parser generators (Flex, Bison), network protocol state machines, and hardware description languages. Every compiler starts with a DFA for tokenization.",
@@ -1504,7 +1504,7 @@ const tm = new TuringMachine(
     "S0"
 );
 console.log(`TM result: ${tm.run()}`);
-console.log(`Steps: ${tm.steps}`);",
+console.log(`Steps: ${tm.steps}`);`,
         },
         successMessage: "Turing machine operational. You've simulated the universal model of computation. Every program, every algorithm, every AI system is a Turing machine at its core. The Church-Turing thesis is no longer abstract.",
         realWorldContext: "The Turing machine is the theoretical foundation of computer science. All programming languages are Turing-complete. The halting problem you will study next proves there are limits to what even a Turing machine can decide.",
