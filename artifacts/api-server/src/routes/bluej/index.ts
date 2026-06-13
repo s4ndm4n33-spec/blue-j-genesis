@@ -10,6 +10,7 @@ import diagnosticRouter from "./diagnostic.js";
 import githubRouter from "./github.js";
 import gitRouter from "./git.js";
 import executeRouter from "./execute.js";
+import gradeRouter from "./grade.js";
 import exportRouter from "./export.js";
 import agentRouter from "./agent.js";
 import prettierRouter from "./prettier-format.js";
@@ -28,6 +29,7 @@ router.use("/diagnostic", diagnosticRouter);
 router.use("/github", githubRouter);
 router.use("/git", gitRouter);
 router.use("/execute", executeRouter);
+router.use("/grade", gradeRouter);
 router.use("/export", exportRouter);
 router.use("/agent", agentRouter);
 

@@ -53,7 +53,10 @@ export interface ConceptProgress {
   conceptId: string;
   name: string;
   category: string;
-  proficiency: number; // 0-100
+  phaseId?: number;
+  proficiency: number; // 0-100, equals bestScore
+  bestScore?: number;
+  attempts?: number;
   testsPassed: number;
   testsTotal: number;
   lastAttempted: number;
@@ -192,7 +195,8 @@ interface ProgressState {
   clearNewUnlocks: () => void;
   checkAchievements: () => void;
   checkMilestones: () => void;
-  trackConceptAttempt: (conceptId: string, passed: boolean) => void;
+  applyGradeResult: (concept: ConceptProgress) => void;
+  hydrateConcepts: (concepts: ConceptProgress[]) => void;
   getConceptProgress: (conceptId: string) => ConceptProgress | undefined;
   getOverallMastery: () => number;
 }
@@ -289,46 +293,29 @@ export const useProgressStore = create<ProgressState>()(
 
       clearNewUnlocks: () => set({ newUnlocks: [] }),
 
-      trackConceptAttempt: (conceptId, passed) => {
+      // Apply an authoritative graded result from the backend. The server is the
+      // single source of truth: it has already merged best-score / attempts and
+      // persisted to the DB, so we simply replace our local record for the concept.
+      applyGradeResult: (concept) => {
         const { stats } = get();
-        const existing = stats.conceptsMastered.find((c) => c.conceptId === conceptId);
         const updated = [...stats.conceptsMastered];
-        if (existing) {
-          const idx = updated.findIndex((c) => c.conceptId === conceptId);
-          const testsPassed = existing.testsPassed + (passed ? 1 : 0);
-          const testsTotal = existing.testsTotal + 1;
-          const proficiency = Math.min(Math.round((testsPassed / testsTotal) * 100), 100);
-          updated[idx] = {
-            ...existing,
-            testsPassed,
-            testsTotal,
-            proficiency,
-            lastAttempted: Date.now(),
-            mastered: proficiency >= 80,
-          };
-        } else {
-          updated.push({
-            conceptId,
-            name: conceptId,
-            category: 'CS Fundamentals',
-            proficiency: passed ? 100 : 0,
-            testsPassed: passed ? 1 : 0,
-            testsTotal: 1,
-            lastAttempted: Date.now(),
-            mastered: passed,
-          });
-        }
+        const idx = updated.findIndex((c) => c.conceptId === concept.conceptId);
+        if (idx >= 0) updated[idx] = concept;
+        else updated.push(concept);
         set({ stats: { ...stats, conceptsMastered: updated } });
-        setTimeout(() => get().checkAchievements(), 100);
-        // Sync to backend (best-effort)
-        const sessionId = localStorage.getItem('bluej-session-id');
-        if (sessionId) {
-          fetch('/api/bluej/chat/progress', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ sessionId, conceptsMastered: updated }),
-          }).catch(() => {});
-        }
+        setTimeout(() => { get().checkAchievements(); get().checkMilestones(); }, 50);
+      },
+
+      // Hydrate from the backend on load. The DB is the SINGLE source of truth for
+      // empirical grades, so we REPLACE the local record wholesale rather than
+      // merging. This purges any stale/legacy locally-persisted entries (e.g. from
+      // the old "code didn't crash" tracking) that were never empirically graded.
+      hydrateConcepts: (concepts) => {
+        if (!Array.isArray(concepts)) return;
+        const sanitized = concepts.filter((c) => c && typeof c.conceptId === 'string');
+        const { stats } = get();
+        set({ stats: { ...stats, conceptsMastered: sanitized } });
+        setTimeout(() => { get().checkAchievements(); get().checkMilestones(); }, 50);
       },
 
       getConceptProgress: (conceptId) => {

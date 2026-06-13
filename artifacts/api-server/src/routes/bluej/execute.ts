@@ -1,144 +1,19 @@
 import { Router, type IRouter } from "express";
-import { spawn } from "child_process";
-import { writeFile, unlink, mkdir } from "fs/promises";
+import { writeFile, unlink } from "fs/promises";
 import { join } from "path";
 import { randomUUID } from "crypto";
-import { existsSync } from "fs";
+import {
+  checkSafety,
+  ensureTmpDir,
+  spawnProcess,
+  TMP_DIR,
+  PYTHON_BIN,
+  GPP_BIN,
+  GCC_BIN,
+  NODE_BIN,
+} from "./executor.js";
 
 const router: IRouter = Router();
-
-// ─── Basic code safety filter ────────────────────────────────────────────────
-// Blocks the most common dangerous patterns before execution.
-// This is NOT a full sandbox — it's a best-effort layer for beta testing.
-// For public launch, swap the executor for a proper isolation service.
-
-const PYTHON_BLOCKLIST = [
-  /\bimport\s+socket\b/,
-  /\bimport\s+subprocess\b/,
-  /\bfrom\s+subprocess\b/,
-  /\bos\.system\s*\(/,
-  /\bos\.popen\s*\(/,
-  /\bos\.exec[a-z]+\s*\(/,
-  /\beval\s*\(.*fetch|eval\s*\(.*request/i,
-  /\bexec\s*\(.*fetch|exec\s*\(.*request/i,
-  /\b__import__\s*\(\s*['"]socket/,
-  /\b__import__\s*\(\s*['"]subprocess/,
-  /\bimport\s+urllib\.request\b/,
-  /\bimport\s+http\.client\b/,
-  /\brequests\.get\b/,
-  /\brequests\.post\b/,
-];
-
-const JS_BLOCKLIST = [
-  /require\s*\(\s*['"]child_process['"]/,
-  /require\s*\(\s*['"]net['"]/,
-  /require\s*\(\s*['"]dgram['"]/,
-  /require\s*\(\s*['"]cluster['"]/,
-  /require\s*\(\s*['"]worker_threads['"]/,
-  /\bexec\s*\(/,
-  /\bspawn\s*\(/,
-  /\bfetch\s*\(/,
-  /\bXMLHttpRequest\b/,
-];
-
-const CPP_BLOCKLIST = [
-  /#include\s*<\s*sys\/socket\.h\s*>/,
-  /#include\s*<\s*netinet\/in\.h\s*>/,
-  /#include\s*<\s*arpa\/inet\.h\s*>/,
-  /\bsystem\s*\(/,
-  /\bpopen\s*\(/,
-  /\bexecv[pe]?\s*\(/,
-  /\bfork\s*\(/,
-];
-
-const C_BLOCKLIST = [
-  /#include\s*<\s*sys\/socket\.h\s*>/,
-  /#include\s*<\s*netinet\/in\.h\s*>/,
-  /#include\s*<\s*arpa\/inet\.h\s*>/,
-  /\bsystem\s*\(/,
-  /\bpopen\s*\(/,
-  /\bexecv[pe]?\s*\(/,
-  /\bfork\s*\(/,
-];
-
-const GCODE_BLOCKLIST: RegExp[] = [];
-
-const LANG_BLOCKLISTS: Record<string, RegExp[]> = {
-  python: PYTHON_BLOCKLIST,
-  javascript: JS_BLOCKLIST,
-  cpp: CPP_BLOCKLIST,
-  c: C_BLOCKLIST,
-  gcode: GCODE_BLOCKLIST,
-};
-
-function checkSafety(code: string, language: string): string | null {
-  const patterns = LANG_BLOCKLISTS[language] ?? [];
-  for (const re of patterns) {
-    if (re.test(code)) {
-      return `Blocked pattern detected (${re.source.slice(0, 60)}). Network access and subprocess execution are disabled in the sandbox.`;
-    }
-  }
-  return null;
-}
-
-// ─── Local execution ─────────────────────────────────────────────────────────
-const PYTHON_BIN = process.env.PYTHON_BIN || "/nix/store/flbj8bq2vznkcwss7sm0ky8rd0k6kar7-python-wrapped-0.1.0/bin/python3";
-const GPP_BIN    = process.env.GPP_BIN    || "/nix/store/b11ycf80cxi2iyrga8rkq1wzdinmax18-replit-runtime-path/bin/g++";
-const GCC_BIN    = process.env.GCC_BIN    || "/nix/store/b11ycf80cxi2iyrga8rkq1wzdinmax18-replit-runtime-path/bin/gcc";
-const NODE_BIN   = process.env.NODE_BIN    || process.execPath;
-const EXEC_TIMEOUT_MS = 10_000;
-const MAX_OUTPUT_BYTES = 64 * 1024; // 64KB
-const TMP_DIR = "/tmp/bluej-exec";
-
-async function ensureTmpDir() {
-  if (!existsSync(TMP_DIR)) await mkdir(TMP_DIR, { recursive: true });
-}
-
-function spawnProcess(cmd: string, args: string[]): Promise<{
-  stdout: string; stderr: string; exitCode: number; runtimeMs: number; timedOut: boolean;
-}> {
-  return new Promise((resolve) => {
-    const start = Date.now();
-    let stdout = "", stderr = "";
-    let timedOut = false;
-
-    const proc = spawn(cmd, args, {
-      env: {
-        // Include full PATH so python3 resolves; strip secrets
-        PATH: process.env.PATH || "/usr/local/bin:/usr/bin:/bin",
-        PYTHONDONTWRITEBYTECODE: "1",
-        PYTHONIOENCODING: "utf-8",
-        HOME: "/tmp",
-      },
-    });
-
-    const timer = setTimeout(() => { timedOut = true; proc.kill("SIGKILL"); }, EXEC_TIMEOUT_MS);
-
-    proc.stdout.on("data", (c: Buffer) => {
-      stdout += c.toString("utf-8");
-      if (stdout.length > MAX_OUTPUT_BYTES) {
-        stdout = stdout.slice(0, MAX_OUTPUT_BYTES) + "\n[output truncated — 64KB limit]";
-        proc.kill("SIGKILL");
-      }
-    });
-    proc.stderr.on("data", (c: Buffer) => {
-      stderr += c.toString("utf-8");
-      if (stderr.length > MAX_OUTPUT_BYTES) {
-        stderr = stderr.slice(0, MAX_OUTPUT_BYTES) + "\n[error output truncated]";
-        proc.kill("SIGKILL");
-      }
-    });
-
-    proc.on("close", (code) => {
-      clearTimeout(timer);
-      resolve({ stdout: stdout.trim(), stderr: stderr.trim(), exitCode: code ?? -1, runtimeMs: Date.now() - start, timedOut });
-    });
-    proc.on("error", (err) => {
-      clearTimeout(timer);
-      resolve({ stdout: "", stderr: err.message, exitCode: -1, runtimeMs: Date.now() - start, timedOut: false });
-    });
-  });
-}
 
 // ─── Route ───────────────────────────────────────────────────────────────────
 router.post("/", async (req, res) => {

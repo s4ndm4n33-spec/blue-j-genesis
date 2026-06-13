@@ -32,6 +32,7 @@ router.get("/", async (req, res) => {
       selectedLanguage: progress.selectedLanguage,
       selectedOs: progress.selectedOs,
       conversationId: progress.conversationId,
+      conceptsMastered: (progress.conceptsMastered as unknown[]) ?? [],
     });
   } catch (err) {
     req.log.error({ err }, "Error getting progress");
