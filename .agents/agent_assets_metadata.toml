@@ -18,3 +18,9 @@ id = "PbFZsFOtG-FW6O6snnf9D"
 uri = "file://.local/outputs/bluejgenesis-com.pptx"
 type = "slides"
 title = "bluejgenesis.com.pptx"
+
+[[outputs]]
+id = "VZcpfwlZuVpgWhgwpJ6p8"
+uri = "file://.local/outputs/B-L-U-E--J--Pitch-Deck.pdf"
+type = "pdf"
+title = "B.L.U.E.-J. Pitch Deck.pdf"
